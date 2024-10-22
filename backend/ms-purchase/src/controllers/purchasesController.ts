@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
-import Purchase from '../models/Purchase.model'; // Asegúrate de importar el modelo de Purchase
+import db from '../config/db'; 
+import Purchase from '../models/Purchase.model';
 
 class PurchaseController {
     // Método para obtener todas las compras
@@ -18,24 +19,29 @@ class PurchaseController {
         const { product_id, mailing_adress } = req.body;
         const purchase_date = new Date();
 
+        const transaction = await db.transaction();
+
         try {
             // Obtener información del producto
             const productResponse = await axios.get(`http://localhost:4000/api/products/${product_id}`);
             const product = productResponse.data.data;
 
             if (!product) {
+                await transaction.rollback();
                 return res.status(404).json({ error: 'Producto no encontrado' });
             }
 
             // Guardar la compra en la base de datos
-            const purchase = await Purchase.create({ product_id, purchase_date, mailing_adress });
+            const purchase = await Purchase.create({ product_id, purchase_date, mailing_adress }, { transaction });
 
+            await transaction.commit();
             return res.json({ message: 'Compra creada', purchase });
         } catch (error) {
+            await transaction.rollback();
             console.error(error);
             return res.status(500).json({ error: 'Error al crear la compra' });
         }
     }
-};
+}
 
-export default PurchaseController
+export default PurchaseController;

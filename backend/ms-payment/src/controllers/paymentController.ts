@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import Payment from '../models/Payment.model';
+import db from '../config/db';
 
 class PaymentController {
     // Método para obtener todos los pagos
@@ -20,20 +21,21 @@ class PaymentController {
     // Método para procesar un pago
     static async processPayment(req: Request, res: Response): Promise<Response> {
         const { product_id, quantity, payment_method } = req.body;
-
         if (!product_id || quantity <= 0 || !payment_method) {
             return res.status(400).json({ message: 'La ID del producto debe ser dada, la cantidad debe ser mayor a 0, y el metodo de pago debe ser dado' });
         }
+
+        const transaction = await db.transaction();
 
         try {
             // Verificar stock del producto
             const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
             const stock = stockResponse.data;
-
             const productResponse = await axios.get(`http://localhost:4000/api/products/${product_id}`);
             const product = productResponse.data;
 
             if (!stock || stock.quantity < quantity) {
+                await transaction.rollback();
                 return res.status(400).json({ message: 'No hay suficiente stock disponible' });
             }
 
@@ -46,17 +48,19 @@ class PaymentController {
                 product_id: product_id,
                 price: total,
                 payment_method: payment_method
-            });
+            }, { transaction });
 
-            // Descontar la quantity del stock
+            // Descontar la cantidad del stock
             await axios.put(`http://localhost:4002/api/inventory/update`, {
                 product_id,
                 quantity,
                 entrada_salida: 2 // 2 indica una salida 
             });
 
+            await transaction.commit();
             return res.status(201).json(newPayment);
         } catch (error) {
+            await transaction.rollback();
             if (axios.isAxiosError(error)) {
                 return res.status(500).json({ message: 'Error al obtener stock', error: error.response?.data });
             }
