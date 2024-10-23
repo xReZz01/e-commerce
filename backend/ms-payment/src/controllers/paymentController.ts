@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
-import Payment from '../models/Payment.model';
 import db from '../config/db';
+import Payment from '../models/Payment.model';
 
 class PaymentController {
     // Método para obtener todos los pagos
@@ -31,7 +31,7 @@ class PaymentController {
             // Verificar stock del producto
             const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
             const stock = stockResponse.data;
-            const productResponse = await axios.get(`http://localhost:4000/api/products/${product_id}`);
+            const productResponse = await axios.get(`http://localhost:4001/api/products/${product_id}`);
             const product = productResponse.data;
 
             if (!stock || stock.quantity < quantity) {
@@ -51,20 +51,30 @@ class PaymentController {
             }, { transaction });
 
             // Descontar la cantidad del stock
-            await axios.put(`http://localhost:4002/api/inventory/update`, {
-                product_id,
-                quantity,
-                entrada_salida: 2 // 2 indica una salida 
-            });
+            try {
+                await axios.put(`http://localhost:4002/api/inventory/update`, {
+                    product_id,
+                    quantity,
+                    input_output: 2 // 2 indica una salida 
+                });
+            } catch (error) {
+                console.error('Error al actualizar el inventario:', error);
+                await transaction.rollback();
+                if (axios.isAxiosError(error)) {
+                    return res.status(500).json({ message: 'Error al actualizar el inventario', error: error.response?.data });
+                }
+                return res.status(500).json({ message: 'Error al actualizar el inventario' });
+            }
 
             await transaction.commit();
             return res.status(201).json(newPayment);
         } catch (error) {
+            console.error('Error al procesar el pago:', error);
             await transaction.rollback();
             if (axios.isAxiosError(error)) {
-                return res.status(500).json({ message: 'Error al obtener stock', error: error.response?.data });
+                return res.status(500).json({ message: 'Error al procesar el pago', error: error.response?.data });
             }
-            return res.status(500).json({ message: 'Error al procesar pago', error });
+            return res.status(500).json({ message: 'Error al procesar el pago', error: error.message });
         }
     }
 }

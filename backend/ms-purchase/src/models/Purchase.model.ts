@@ -21,7 +21,7 @@ class Purchase extends Model {
         type: DataType.STRING(255),
         allowNull: false
     })
-    declare mailing_adress: string;
+    declare mailing_address: string;
 }
 
 export default Purchase;
