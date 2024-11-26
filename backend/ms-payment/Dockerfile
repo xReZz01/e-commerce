@@ -1,0 +1,23 @@
+# Usa una imagen base de Node.js
+FROM node:14
+
+# Establece el directorio de trabajo en /app
+WORKDIR /app
+
+# Copia el package.json y el package-lock.json
+COPY package.json package-lock.json ./
+
+# Instala las dependencias
+RUN npm install
+
+# Copia el resto de la aplicación
+COPY . .
+
+# Compila el proyecto TypeScript
+RUN npx tsc
+
+# Expone el puerto en el que la aplicación correrá
+EXPOSE 4003
+
+# Define el comando para correr la aplicación
+CMD ["npx", "ts-node", "src/index.ts"]
