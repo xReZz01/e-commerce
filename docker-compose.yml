@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Zookeeper 
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 10
+      ZOOKEEPER_SYNC_LIMIT: 5
+    volumes:
+      - ./data/zookeeper:/data
+      - ./datalog/zookeeper:/datalog
+    networks:
+      - kafka-net
+
+  # Kafka
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_NAMES: INSIDE
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093
+      KAFKA_LISTENER_SSL_ENABLED: "false"
+      KAFKA_LISTENER_INTERNAL_PORT: 9093
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    depends_on:
+      - zookeeper
+    networks:
+      - kafka-net
+
+  # Microservicio Catalogo (ms-catalog)
+  ms-catalog:
+    build:
+      context: ./backend/ms-catalog # Ruta a la carpeta de tu microservicio
+    container_name: ms-catalog
+    ports:
+      - "4001:4001" # Asegúrate de que el puerto sea el correcto para tu microservicio
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka
+
+  # Microservicio Stock (ms-stock)
+  ms-stock:
+    build:
+      context: ./backend/ms-stock # Ruta a la carpeta de tu microservicio
+    container_name: ms-stock
+    ports:
+      - "4002:4002"
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka
+
+  # Microservicio Pagos (ms-payment)
+  ms-payment:
+    build:
+      context: ./backend/ms-payment # Ruta a la carpeta de tu microservicio
+    container_name: ms-payment
+    ports:
+      - "4003:4003"
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka
+
+  # Microservicio Compras (ms-purchase)
+  ms-purchase:
+    build:
+      context: ./backend/ms-purchase # Ruta a la carpeta de tu microservicio
+    container_name: ms-purchase
+    ports:
+      - "4004:4004"
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka
+
+  # Orquestador (orchestator)
+  orchestator:
+    build:
+      context: ./backend/orchestator # Ruta a la carpeta de tu microservicio
+    container_name: orchestator
+    ports:
+      - "4000:4000"
+    environment:
+      KAFKA_BROKER: kafka:9093
+    networks:
+      - kafka-net
+    depends_on:
+      - kafka
+
+
+
+
+networks:
+  kafka-net:
+    driver: bridge
