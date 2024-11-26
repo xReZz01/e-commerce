@@ -32,6 +32,7 @@
     "pg-hstore": "^2.3.4",
     "pkg": "^5.8.1",
     "sequelize": "^6.37.4",
-    "sequelize-typescript": "^2.1.6"
+    "sequelize-typescript": "^2.1.6",
+    "kafka-node": "^5.0.0"
   }
 }
