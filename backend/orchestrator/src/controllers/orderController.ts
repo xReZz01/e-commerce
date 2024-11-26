@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
+import { KafkaClient, Producer } from 'kafka-node';
+
+const client = new KafkaClient({ kafkaHost: 'localhost:9092' });
+const producer = new Producer(client);
 
 export const createOrder = async (req: Request, res: Response) => {
   const transaction = await db.transaction(); // Assuming db is set up
@@ -47,7 +51,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const order = {
         product_id,
         quantity,
-        total_price: paymentResponse.data.price,
+        total_price: paymentResponse.data.total_price,
         payment_method,
         mailing_address
       };
@@ -55,11 +59,29 @@ export const createOrder = async (req: Request, res: Response) => {
 
       if (purchaseResponse.status !== 200) {
         await transaction.rollback();
-        return res.status(400).json({ message: 'Error al crear una orden de pago' });
+        return res.status(400).json({ message: 'Error al crear una orden de compra' });
       }
 
-      await transaction.commit();
-      return res.status(200).json({ message: 'Orden creada correctamente' });
+      // Enviar evento a Kafka
+      const orderData = {
+        product_id,
+        quantity,
+        payment_method,
+        mailing_address,
+        total_price: paymentResponse.data.total_price
+      };
+
+      producer.send([{ topic: 'order-topic', messages: JSON.stringify(orderData) }], async (err, data) => {
+        if (err) {
+          console.error('Error al enviar mensaje a Kafka:', err);
+          await transaction.rollback();
+          return res.status(500).json({ message: 'Error al crear la orden' });
+        } else {
+          console.log('Mensaje enviado a Kafka:', data);
+          await transaction.commit();
+          return res.status(200).json({ message: 'Orden creada correctamente' });
+        }
+      });
     } catch (error) {
       console.error('Error al procesar el pago o crear la orden:', error);
       await transaction.rollback();
