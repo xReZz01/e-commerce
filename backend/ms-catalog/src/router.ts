@@ -48,11 +48,5 @@ router.patch('/:id',
     ProductController.updateActivate
 );
 
-// Eliminar un producto
-router.delete('/:id', 
-    param('id').isInt().withMessage("ID no válido"),
-    handleInputErrors,
-    ProductController.deleteProduct
-);
 
 export default router;
