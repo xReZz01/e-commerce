@@ -20,4 +20,4 @@ COPY . .
 EXPOSE 4000
 
 # Define el comando para correr la aplicación
-CMD ["npm","run","dev"]
+CMD ["npm","run","dev"] 
