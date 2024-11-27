@@ -98,7 +98,7 @@ export const createOrderSaga = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pago fallido' });
     }
 
-    // Crear orden de compra
+    // Crear orden de compra 
     const orderData = { product_id, quantity, purchase_date, mailing_address };
     const purchaseResponse = await axios.post('http://localhost:4004/api/purchases', orderData);
     if (purchaseResponse.status !== 201) {
