@@ -30,20 +30,17 @@ services:
       KAFKA_LISTENER_NAMES: INSIDE
       KAFKA_LISTENERS: INSIDE://0.0.0.0:9093
       KAFKA_LISTENER_SSL_ENABLED: "false"
-      KAFKA_LISTENER_INTERNAL_PORT: 9093
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-    depends_on:
-      - zookeeper
     networks:
       - kafka-net
 
   # Microservicio Catalogo (ms-catalog)
   ms-catalog:
     build:
-      context: ./backend/ms-catalog # Ruta a la carpeta de tu microservicio
+      context: ./ms-catalog # Ruta a la carpeta de tu microservicio
     container_name: ms-catalog
     ports:
-      - "4001:4001" # Asegúrate de que el puerto sea el correcto para tu microservicio
+      - "4001:4001"
     environment:
       KAFKA_BROKER: kafka:9093
     networks:
@@ -51,11 +48,11 @@ services:
     depends_on:
       - kafka
 
-  # Microservicio Stock (ms-stock)
-  ms-stock:
+  # Microservicio Inventario (ms-inventory)
+  ms-inventory:
     build:
-      context: ./backend/ms-stock # Ruta a la carpeta de tu microservicio
-    container_name: ms-stock
+      context: ./ms-inventory # Ruta a la carpeta de tu microservicio
+    container_name: ms-inventory
     ports:
       - "4002:4002"
     environment:
@@ -68,7 +65,7 @@ services:
   # Microservicio Pagos (ms-payment)
   ms-payment:
     build:
-      context: ./backend/ms-payment # Ruta a la carpeta de tu microservicio
+      context: ./ms-payment # Ruta a la carpeta de tu microservicio
     container_name: ms-payment
     ports:
       - "4003:4003"
@@ -79,10 +76,10 @@ services:
     depends_on:
       - kafka
 
-  # Microservicio Compras (ms-purchase)
+  # Microservicio compras (ms-purchase)
   ms-purchase:
     build:
-      context: ./backend/ms-purchase # Ruta a la carpeta de tu microservicio
+      context: ./ms-purchase # Ruta a la carpeta de tu microservicio
     container_name: ms-purchase
     ports:
       - "4004:4004"
@@ -93,11 +90,11 @@ services:
     depends_on:
       - kafka
 
-  # Orquestador (orchestator)
-  orchestator:
+  # Microservicio Orquestador (orchestrator)
+  orchestrator:
     build:
-      context: ./backend/orchestator # Ruta a la carpeta de tu microservicio
-    container_name: orchestator
+      context: ./orchestrator # Ruta a la carpeta de tu microservicio
+    container_name: orchestrator
     ports:
       - "4000:4000"
     environment:
@@ -106,10 +103,7 @@ services:
       - kafka-net
     depends_on:
       - kafka
-
-
-
-
+      
 networks:
   kafka-net:
     driver: bridge

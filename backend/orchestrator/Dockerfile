@@ -10,14 +10,14 @@ COPY package.json package-lock.json ./
 # Instala las dependencias
 RUN npm install
 
+# Instala nodemon globalmente
+RUN npm install -g nodemon
+
 # Copia el resto de la aplicación
 COPY . .
-
-# Compila el proyecto TypeScript
-RUN npx tsc
 
 # Expone el puerto en el que la aplicación correrá
 EXPOSE 4000
 
 # Define el comando para correr la aplicación
-CMD ["npx", "ts-node", "src/index.ts"]
+CMD ["npm","run","dev"]

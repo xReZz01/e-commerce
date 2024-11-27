@@ -10,7 +10,11 @@
     "esModuleInterop": true,
     "declaration": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "baseUrl": "./",
+    "typeRoots": ["node_modules/@types", "./types"]
   },
-  "include": ["src/**/*.ts"]
-} 
+  "include": ["src/**/*", "types/**/*.d.ts"]
+}
