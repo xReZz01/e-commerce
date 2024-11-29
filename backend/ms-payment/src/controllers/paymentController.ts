@@ -1,20 +1,63 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
-import Payment from '../models/Payment.model';
+import Payments from '../models/Payment.model';
+import cache from 'memory-cache';
 
 class PaymentController {
     // Método para obtener todos los pagos
     static async getPayments(req: Request, res: Response): Promise<Response> {
         try {
-            const payments = await Payment.findAll({
+            // Verificar si los pagos están en caché
+            const cacheKey = 'allPayments';
+            const cachedPayments = cache.get(cacheKey);
+
+            if (cachedPayments) {
+                return res.status(200).json({ data: cachedPayments });
+            }
+
+            // Obtener los pagos de la base de datos si no esta en cache
+            const payments = await Payments.findAll({
                 attributes: { exclude: ['createdAt', 'updatedAt'] }, // Excluir atributos innecesarios
                 order: [['createdAt', 'DESC']] // Ordenar por fecha de creación
             });
+
+            // Agrega en cache
+            cache.put(cacheKey, payments, 60000); // Cache por 60 segundos
             return res.json({ data: payments });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ error: 'Error al obtener los pagos' });
+        }
+    }
+
+    // Método para obtener un pago por ID
+    static async getPaymentById(req: Request, res: Response): Promise<Response> {
+        const { id } = req.params;
+        try {
+            // Buscar en caché
+            const cacheKey = `payment_${id}`;
+            const cachedPayment = cache.get(cacheKey);
+
+            if (cachedPayment) {
+                return res.status(200).json(cachedPayment);
+            }
+
+            // si no esta en cache, buscar en la base de datos
+            const payment = await Payments.findByPk(id, {
+                attributes: { exclude: ['createdAt', 'updatedAt'] } // Excluir atributos innecesarios
+            });
+
+            if (!payment) {
+                return res.status(404).json({ message: 'Pago no encontrado' });
+            }
+
+            // Agregar a cache
+            cache.put(cacheKey, payment, 60000); // Cache por 60 segundos
+            return res.status(200).json(payment);
+        } catch (error) {
+            console.error(error);
+            return res.status(500).json({ message: 'Error al obtener el pago', error });
         }
     }
 
@@ -44,7 +87,7 @@ class PaymentController {
             const total = price * quantity;
 
             // Crear el registro de pago
-            const newPayment = await Payment.create({
+            const newPayment = await Payments.create({
                 product_id: product_id,
                 price: total,
                 payment_method: payment_method
@@ -67,6 +110,12 @@ class PaymentController {
             }
 
             await transaction.commit();
+
+            // Actualizar el caché
+            const cacheKey = `payment_${newPayment.id}`;
+            cache.put(cacheKey, newPayment, 60000); // Cache por 60 segundos
+            cache.del('allPayments'); // Invalida el caché de todos los pagos
+
             return res.status(201).json(newPayment);
         } catch (error) {
             console.error('Error al procesar el pago:', error);

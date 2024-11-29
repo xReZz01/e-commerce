@@ -2,12 +2,23 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db'; 
 import Purchase from '../models/Purchase.model';
+import cache from 'memory-cache';
 
 class PurchaseController {
     // Método para obtener todas las compras
     static async getPurchases(req: Request, res: Response): Promise<Response> {
         try {
+            // Buscar en cache
+            const cacheKey = 'allPurchases';
+            const cachedPurchases = cache.get(cacheKey);
+
+            if (cachedPurchases) {
+                return res.status(200).json(cachedPurchases);
+            }
+
+            // Si no esta en cache, buscar en la base de datos
             const purchases = await Purchase.findAll();
+            cache.put(cacheKey, purchases, 60000); // Cache por 60 segundos
             return res.status(200).json(purchases);
         } catch (error) {
             return res.status(500).json({ message: 'Error al obtener compras', error });
@@ -35,6 +46,10 @@ class PurchaseController {
             const purchase = await Purchase.create({ product_id, purchase_date, mailing_address }, { transaction });
 
             await transaction.commit();
+
+            // Actualizar el caché
+            cache.del('allPurchases'); // Invalida el caché de todas las compras
+
             return res.json({ message: 'Compra creada', purchase });
         } catch (error) {
             await transaction.rollback();

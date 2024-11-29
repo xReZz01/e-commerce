@@ -19,7 +19,7 @@ router.post('/',
 router.put('/update', 
     validateInputOutput, 
     validateQuantity, 
-    InventoryController.updateStockQuantity
+    InventoryController.updateStock
 );
 
 export default router;

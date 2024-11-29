@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
+import cache from 'memory-cache';
 
 export const createOrder = async (req: Request, res: Response) => {
-  const transaction = await db.transaction(); // Assuming db is set up
+  const transaction = await db.transaction(); 
 
   try {
     const { product_id, quantity, payment_method, purchase_date, mailing_address } = req.body;
@@ -13,21 +14,29 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Todos los campos son obligatorios' });
     }
 
-    // Verificar inventario
-    try {
-      const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
-      const stock = stockResponse.data;
-      if (!stock || stock.quantity < quantity) {
+    // Verificar inventario en cache
+    const stockCacheKey = `stock_${product_id}`;
+    let stock = cache.get(stockCacheKey);
+
+    if (!stock) {
+      try {
+        // Pone en cache el stock del producto
+        const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
+        stock = stockResponse.data;
+        cache.put(stockCacheKey, stock, 60000); // Cache por 60 segundos
+      } catch (error) {
+        console.error('Error al obtener stock:', error);
         await transaction.rollback();
-        return res.status(400).json({ message: 'No hay suficiente stock disponible' });
+        if (axios.isAxiosError(error)) {
+          return res.status(500).json({ message: 'Error al obtener stock', error: error.response?.data });
+        }
+        return res.status(500).json({ message: 'Error al obtener stock' });
       }
-    } catch (error) {
-      console.error('Error al obtener stock:', error);
+    }
+
+    if (!stock || stock.quantity < quantity) {
       await transaction.rollback();
-      if (axios.isAxiosError(error)) {
-        return res.status(500).json({ message: 'Error al obtener stock', error: error.response?.data });
-      }
-      return res.status(500).json({ message: 'Error al obtener stock' });
+      return res.status(400).json({ message: 'No hay suficiente stock disponible' });
     }
 
     // Procesar pago
@@ -47,18 +56,21 @@ export const createOrder = async (req: Request, res: Response) => {
       const order = {
         product_id,
         quantity,
-        total_price: paymentResponse.data.price,
+        total_price: paymentResponse.data.total_price,
         payment_method,
         mailing_address
       };
       const purchaseResponse = await axios.post('http://localhost:4004/api/purchases', order);
-
       if (purchaseResponse.status !== 200) {
         await transaction.rollback();
         return res.status(400).json({ message: 'Error al crear una orden de pago' });
       }
 
       await transaction.commit();
+
+      // Actualizar el caché
+      cache.del(`stock_${product_id}`); // Invalida el caché del stock del producto
+
       return res.status(200).json({ message: 'Orden creada correctamente' });
     } catch (error) {
       console.error('Error al procesar el pago o crear la orden:', error);

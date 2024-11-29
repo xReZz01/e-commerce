@@ -1,12 +1,23 @@
 import { Request, Response } from 'express';
 import Stock from '../models/Inventory.model';
 import db from '../config/db';
+import cache from 'memory-cache';
 
 class InventoryController {
     // Obtener todos los registros de inventario
     static async getAllStocks(req: Request, res: Response): Promise<Response> {
         try {
+            // Buscar en cache todos los registros de inventario
+            const cacheKey = 'allStocks';
+            const cachedStocks = cache.get(cacheKey);
+
+            if (cachedStocks) {
+                return res.status(200).json(cachedStocks);
+            }
+
+            // Si no hay cache, lo busca en la base de datos y lo agrega en cache
             const stocks = await Stock.findAll();
+            cache.put(cacheKey, stocks, 60000); // Cache por 60 segundos
             return res.status(200).json(stocks);
         } catch (error) {
             return res.status(500).json({ message: 'Error al obtener datos del inventario', error });
@@ -17,10 +28,21 @@ class InventoryController {
     static async getStockByProductId(req: Request, res: Response): Promise<Response> {
         const { product_id } = req.params;
         try {
+            // Busca en cache el stock por product_id
+            const cacheKey = `stock_${product_id}`;
+            const cachedStock = cache.get(cacheKey);
+
+            if (cachedStock) {
+                return res.status(200).json(cachedStock);
+            }
+
             const stock = await Stock.findOne({ where: { product_id } });
             if (!stock) {
                 return res.status(404).json({ message: 'Stock no encontrado' });
             }
+
+            // Agrega el stock en cache
+            cache.put(cacheKey, stock, 60000); // Cache por 60 segundos
             return res.status(200).json(stock);
         } catch (error) {
             return res.status(500).json({ message: 'Error al obtener stock', error });
@@ -29,6 +51,7 @@ class InventoryController {
 
     // Agregar nuevo registro de inventario
     static async addStock(req: Request, res: Response): Promise<Response> {
+        // Verificar que los datos sean válidos
         const { product_id, quantity, input_output } = req.body;
         if (!product_id || quantity <= 0 || input_output !== 1) {
             return res.status(400).json({ message: 'La ID del producto debe ser dada, la cantidad debe ser mayor a 0, y entrada/salida debe ser 1 para agregar stock' });
@@ -43,11 +66,21 @@ class InventoryController {
                 existingStock.quantity += quantity;
                 await existingStock.save({ transaction });
                 await transaction.commit();
+
+                // Actualizar el caché
+                cache.put(`stock_${product_id}`, existingStock, 60000); // Cache por 60 segundos
+                cache.del('allStocks');
+
                 return res.status(200).json(existingStock);
             } else {
                 // Si no existe, crear un nuevo registro
                 const newStock = await Stock.create({ product_id, quantity, input_output }, { transaction });
                 await transaction.commit();
+
+                // Actualizar el caché
+                cache.put(`stock_${product_id}`, newStock, 60000); // Cache por 60 segundos
+                cache.del('allStocks');
+
                 return res.status(201).json(newStock);
             }
         } catch (error) {
@@ -56,12 +89,12 @@ class InventoryController {
         }
     }
 
-    // Modificar la quantity en el inventario
-    static async updateStockQuantity(req: Request, res: Response): Promise<Response> {
+    // Modificar stock existente
+    static async updateStock(req: Request, res: Response): Promise<Response> {
+        // Verificar que los datos sean validos
         const { product_id, quantity, input_output } = req.body;
-        // Validar que product_id, quantity y input_output sean válidos
         if (!product_id || quantity <= 0 || (input_output !== 1 && input_output !== 2)) {
-            return res.status(400).json({ message: 'La ID del producto debe ser dada, la cantidad debe ser mayor a 0, y entrada/salida debe ser 1 (entrada) o 2 (salida)' });
+            return res.status(400).json({ message: 'Datos inválidos' });
         }
 
         const transaction = await db.transaction();
@@ -85,6 +118,11 @@ class InventoryController {
             }
             await stock.save({ transaction });
             await transaction.commit();
+
+            // Actualizar el caché
+            cache.put(`stock_${product_id}`, stock, 60000); // Cache por 60 segundos
+            cache.del('allStocks');
+
             return res.status(200).json(stock);
         } catch (error) {
             await transaction.rollback();

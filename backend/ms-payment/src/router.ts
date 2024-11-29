@@ -5,6 +5,7 @@ import { handleInputErrors } from './middleware/handleInputErros';
 const router = Router();
 
 router.get('/', handleInputErrors, PaymentController.getPayments)
+router.get('/:id', handleInputErrors, PaymentController.getPaymentById)
 router.post('/',handleInputErrors, PaymentController.processPayment)
 
 export default router;
