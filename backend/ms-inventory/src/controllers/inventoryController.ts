@@ -1,29 +1,6 @@
 import { Request, Response } from 'express';
 import Stock from '../models/Inventory.model';
 import db from '../config/db';
-import { KafkaClient, Consumer } from 'kafka-node';
-
-const client = new KafkaClient({ kafkaHost: 'localhost:9092' });
-const consumer = new Consumer(client, [{ topic: 'payment-topic', partition: 0 }], { autoCommit: true });
-
-consumer.on('message', async (message) => {
-    const paymentData = JSON.parse(message.value.toString());
-    const { product_id, quantity } = paymentData;
-
-    try {
-        // Actualizar el inventario basado en paymentData
-        const inventory = await Stock.findOne({ where: { product_id } });
-        if (inventory) {
-            inventory.quantity -= quantity;
-            await inventory.save();
-            console.log(`Inventario actualizado para el producto ${product_id}`);
-        } else {
-            console.error(`Producto ${product_id} no encontrado en el inventario`);
-        }
-    } catch (error) {
-        console.error('Error al actualizar el inventario:', error);
-    }
-});
 
 class InventoryController {
     // Obtener todos los registros de inventario

@@ -2,10 +2,6 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
 import Payment from '../models/Payment.model';
-import { KafkaClient, Producer } from 'kafka-node';
-
-const client = new KafkaClient({ kafkaHost: 'localhost:9092' });
-const producer = new Producer(client);
 
 class PaymentController {
     // Método para obtener todos los pagos
@@ -44,40 +40,41 @@ class PaymentController {
             }
 
             // Calcular el precio total
-            const price = product.price;
+            const price = product.data.price;
             const total = price * quantity;
 
-            // Crear el pago en la base de datos
-            const payment = await Payment.create({
-                product_id,
-                quantity,
-                payment_method,
-                total_price: total
+            // Crear el registro de pago
+            const newPayment = await Payment.create({
+                product_id: product_id,
+                price: total,
+                payment_method: payment_method
             }, { transaction });
 
-            // Enviar evento a Kafka
-            const paymentData = {
-                product_id,
-                quantity,
-                payment_method,
-                total_price: total
-            };
-
-            producer.send([{ topic: 'payment-topic', messages: JSON.stringify(paymentData) }], async (err, data) => {
-                if (err) {
-                    console.error('Error al enviar mensaje a Kafka:', err);
-                    await transaction.rollback();
-                    return res.status(500).json({ message: 'Error al procesar el pago' });
-                } else {
-                    console.log('Mensaje enviado a Kafka:', data);
-                    await transaction.commit();
-                    return res.status(201).json(payment);
+            // Descontar la cantidad del stock
+            try {
+                await axios.put(`http://localhost:4002/api/inventory/update`, {
+                    product_id,
+                    quantity,
+                    input_output: 2 // 2 indica una salida 
+                });
+            } catch (error) {
+                console.error('Error al actualizar el inventario:', error);
+                await transaction.rollback();
+                if (axios.isAxiosError(error)) {
+                    return res.status(500).json({ message: 'Error al actualizar el inventario', error: error.response?.data });
                 }
-            });
+                return res.status(500).json({ message: 'Error al actualizar el inventario' });
+            }
+
+            await transaction.commit();
+            return res.status(201).json(newPayment);
         } catch (error) {
             console.error('Error al procesar el pago:', error);
             await transaction.rollback();
-            return res.status(500).json({ message: 'Error al procesar el pago' });
+            if (axios.isAxiosError(error)) {
+                return res.status(500).json({ message: 'Error al procesar el pago', error: error.response?.data });
+            }
+            return res.status(500).json({ message: 'Error al procesar el pago', error: error.message });
         }
     }
 }
