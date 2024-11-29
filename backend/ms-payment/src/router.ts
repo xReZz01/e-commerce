@@ -1,11 +1,19 @@
 import { Router } from 'express';
+import { handleInputErrors, validatePayment } from './middleware/handleInputErros';
 import PaymentController from './controllers/paymentController';
-import { handleInputErrors } from './middleware/handleInputErros';
 
 const router = Router();
 
-router.get('/', handleInputErrors, PaymentController.getPayments)
-router.get('/:id', handleInputErrors, PaymentController.getPaymentById)
-router.post('/',handleInputErrors, PaymentController.processPayment)
+// Ruta para obtener todos los pagos
+router.get('/', handleInputErrors, PaymentController.getPayments);
+
+// Ruta para obtener un pago específico por ID
+router.get('/:id', handleInputErrors, PaymentController.getPaymentById);
+
+// Ruta para procesar un nuevo pago
+router.post('/', validatePayment, handleInputErrors, PaymentController.processPayment);
+
+// Ruta para revertir un pago
+router.delete('/:payment_id', handleInputErrors, PaymentController.compensatePayment);
 
 export default router;

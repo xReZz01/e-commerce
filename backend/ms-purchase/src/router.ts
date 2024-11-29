@@ -1,12 +1,16 @@
-import { Router } from 'express'
-import PurchaseController from './controllers/purchasesController'
-import { handleInputErrors } from './middleware/handleInputErros'
+import { Router } from 'express';
+import { handleInputErrors } from './middleware/handleInputErros';
+import PurchaseController from './controllers/purchasesController';
 
-const router = Router()
+const router = Router();
 
+// Ruta para obtener todas las compras
+router.get('/', handleInputErrors, PurchaseController.getPurchases);
 
-router.get('/', handleInputErrors, PurchaseController.getPurchases)
-router.post('/', handleInputErrors, PurchaseController.createPurchase)
+// Ruta para crear una nueva compra
+router.post('/', handleInputErrors, PurchaseController.createPurchase);
 
+// Ruta para revertir una compra
+router.delete('/rollback', handleInputErrors, PurchaseController.rollbackPurchase);
 
-export default router
+export default router;

@@ -24,7 +24,7 @@ class InventoryController {
         }
     }
 
-    // Método para obtener stock por ID de producto
+    // Obtener stock por ID de producto
     static async getStockByProductId(req: Request, res: Response): Promise<Response> {
         const { product_id } = req.params;
         try {
@@ -51,7 +51,6 @@ class InventoryController {
 
     // Agregar nuevo registro de inventario
     static async addStock(req: Request, res: Response): Promise<Response> {
-        // Verificar que los datos sean válidos
         const { product_id, quantity, input_output } = req.body;
         if (!product_id || quantity <= 0 || input_output !== 1) {
             return res.status(400).json({ message: 'La ID del producto debe ser dada, la cantidad debe ser mayor a 0, y entrada/salida debe ser 1 para agregar stock' });
@@ -91,7 +90,6 @@ class InventoryController {
 
     // Modificar stock existente
     static async updateStock(req: Request, res: Response): Promise<Response> {
-        // Verificar que los datos sean validos
         const { product_id, quantity, input_output } = req.body;
         if (!product_id || quantity <= 0 || (input_output !== 1 && input_output !== 2)) {
             return res.status(400).json({ message: 'Datos inválidos' });
@@ -127,6 +125,41 @@ class InventoryController {
         } catch (error) {
             await transaction.rollback();
             return res.status(500).json({ message: 'Error al modificar stock', error });
+        }
+    }
+
+    // Método para revertir la compra y actualizar el stock
+    static async revertPurchase(req: Request, res: Response): Promise<Response> {
+        const { product_id } = req.params;
+        const { quantity } = req.body;
+
+        // Validar los datos de entrada
+        if (!product_id || quantity <= 0) {
+            return res.status(400).json({ message: 'La cantidad debe ser mayor a 0' });
+        }
+
+        const transaction = await db.transaction();
+        try {
+            // Buscar el stock por product_id
+            const stock = await Stock.findOne({ where: { product_id }, transaction });
+            if (!stock) {
+                await transaction.rollback();
+                return res.status(404).json({ message: 'Stock no encontrado' });
+            }
+
+            // Actualizar el stock (aumentar la cantidad en caso de compensación)
+            stock.quantity += quantity;
+            await stock.save({ transaction });
+            await transaction.commit();
+
+            // Actualizar el caché
+            cache.put(`stock_${product_id}`, stock, 60000); // Cache por 60 segundos
+            cache.del('allStocks');
+
+            return res.status(200).json({ message: 'Stock actualizado exitosamente' });
+        } catch (error) {
+            await transaction.rollback();
+            return res.status(500).json({ message: 'Error al revertir compra y actualizar stock', error });
         }
     }
 }

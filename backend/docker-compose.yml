@@ -1,64 +1,59 @@
 version: '3.8'
 
 services:
-  # Microservicio Catálogo (ms-catalog)
   ms-catalog:
     build:
-      context: ./ms-catalog # Ruta a la carpeta de tu microservicio
+      context: ./ms-catalog
     container_name: ms-catalog
     ports:
       - "4001:4001"
     networks:
       - app-net
 
-  # Microservicio Inventario (ms-inventory)
   ms-inventory:
     build:
-      context: ./ms-inventory # Ruta a la carpeta de tu microservicio
+      context: ./ms-inventory
     container_name: ms-inventory
     ports:
       - "4002:4002"
     networks:
       - app-net
     depends_on:
-      - ms-catalog  # ms-inventory depende de ms-catalog
+      - ms-catalog
 
-  # Microservicio Pagos (ms-payment)
   ms-payment:
     build:
-      context: ./ms-payment # Ruta a la carpeta de tu microservicio
+      context: ./ms-payment
     container_name: ms-payment
     ports:
       - "4003:4003"
     networks:
       - app-net
     depends_on:
-      - ms-inventory  # ms-payment depende de ms-inventory
-      - ms-catalog    # ms-payment depende de ms-catalog
+      - ms-inventory
+      - ms-catalog
 
-  # Microservicio Compras (ms-purchase)
   ms-purchase:
     build:
-      context: ./ms-purchase # Ruta a la carpeta de tu microservicio
+      context: ./ms-purchase
     container_name: ms-purchase
     ports:
       - "4004:4004"
     networks:
       - app-net
     depends_on:
-      - ms-catalog  # ms-purchase depende de ms-catalog
+      - ms-catalog
 
-  # Microservicio Orquestador (orchestrator)
   orchestrator:
     build:
-      context: ./orchestrator # Ruta a la carpeta de tu microservicio
+      context: ./orchestrator
     container_name: orchestrator
     ports:
       - "4000:4000"
     networks:
       - app-net
     depends_on:
-      - ms-catalog   # orquestador depende de todos los microservicios
+      - ms-catalog
       - ms-inventory
       - ms-payment
       - ms-purchase

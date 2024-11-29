@@ -16,13 +16,13 @@ class PaymentController {
                 return res.status(200).json({ data: cachedPayments });
             }
 
-            // Obtener los pagos de la base de datos si no esta en cache
+            // Obtener los pagos de la base de datos si no está en caché
             const payments = await Payments.findAll({
                 attributes: { exclude: ['createdAt', 'updatedAt'] }, // Excluir atributos innecesarios
                 order: [['createdAt', 'DESC']] // Ordenar por fecha de creación
             });
 
-            // Agrega en cache
+            // Agregar en caché
             cache.put(cacheKey, payments, 60000); // Cache por 60 segundos
             return res.json({ data: payments });
         } catch (error) {
@@ -43,7 +43,7 @@ class PaymentController {
                 return res.status(200).json(cachedPayment);
             }
 
-            // si no esta en cache, buscar en la base de datos
+            // Si no está en caché, buscar en la base de datos
             const payment = await Payments.findByPk(id, {
                 attributes: { exclude: ['createdAt', 'updatedAt'] } // Excluir atributos innecesarios
             });
@@ -52,7 +52,7 @@ class PaymentController {
                 return res.status(404).json({ message: 'Pago no encontrado' });
             }
 
-            // Agregar a cache
+            // Agregar a caché
             cache.put(cacheKey, payment, 60000); // Cache por 60 segundos
             return res.status(200).json(payment);
         } catch (error) {
@@ -69,6 +69,7 @@ class PaymentController {
         }
 
         const transaction = await db.transaction();
+        let paymentId;
 
         try {
             // Verificar stock del producto
@@ -93,16 +94,19 @@ class PaymentController {
                 payment_method: payment_method
             }, { transaction });
 
+            paymentId = newPayment.id;
+
             // Descontar la cantidad del stock
             try {
                 await axios.put(`http://localhost:4002/api/inventory/update`, {
                     product_id,
                     quantity,
-                    input_output: 2 // 2 indica una salida 
+                    input_output: 2 // 2 indica una salida (descuento del stock)
                 });
             } catch (error) {
                 console.error('Error al actualizar el inventario:', error);
                 await transaction.rollback();
+                await PaymentController.compensatePayment(paymentId); // Revertir pago en caso de error
                 if (axios.isAxiosError(error)) {
                     return res.status(500).json({ message: 'Error al actualizar el inventario', error: error.response?.data });
                 }
@@ -120,10 +124,23 @@ class PaymentController {
         } catch (error) {
             console.error('Error al procesar el pago:', error);
             await transaction.rollback();
+            if (paymentId) {
+                await PaymentController.compensatePayment(paymentId); // Revertir pago si ya se creó
+            }
             if (axios.isAxiosError(error)) {
                 return res.status(500).json({ message: 'Error al procesar el pago', error: error.response?.data });
             }
             return res.status(500).json({ message: 'Error al procesar el pago', error: error.message });
+        }
+    }
+
+    // Función de compensación del pago
+    static async compensatePayment(paymentId: number) {
+        try {
+            await axios.delete(`http://localhost:4003/api/payments/${paymentId}`);
+            console.log('Pago revertido');
+        } catch (error) {
+            console.error('Error al revertir el pago:', error);
         }
     }
 }

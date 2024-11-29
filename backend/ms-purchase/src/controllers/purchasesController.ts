@@ -57,6 +57,34 @@ class PurchaseController {
             return res.status(500).json({ error: 'Error al crear la compra' });
         }
     }
+
+    // Método para revertir una compra
+    static async rollbackPurchase(req: Request, res: Response): Promise<Response> {
+        const { purchase_id } = req.body;
+
+        const transaction = await db.transaction();
+
+        try {
+            const purchase = await Purchase.findByPk(purchase_id, { transaction });
+
+            if (!purchase) {
+                await transaction.rollback();
+                return res.status(404).json({ error: 'Compra no encontrada' });
+            }
+
+            await purchase.destroy({ transaction });
+            await transaction.commit();
+
+            // Actualizar el caché
+            cache.del('allPurchases'); // Invalida el caché de todas las compras
+
+            return res.json({ message: 'Compra revertida' });
+        } catch (error) {
+            await transaction.rollback();
+            console.error(error);
+            return res.status(500).json({ error: 'Error al revertir la compra' });
+        }
+    }
 }
 
 export default PurchaseController;
