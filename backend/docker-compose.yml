@@ -20,6 +20,8 @@ services:
       - "4002:4002"
     networks:
       - app-net
+    depends_on:
+      - ms-catalog  # ms-inventory depende de ms-catalog
 
   # Microservicio Pagos (ms-payment)
   ms-payment:
@@ -30,6 +32,9 @@ services:
       - "4003:4003"
     networks:
       - app-net
+    depends_on:
+      - ms-inventory  # ms-payment depende de ms-inventory
+      - ms-catalog    # ms-payment depende de ms-catalog
 
   # Microservicio Compras (ms-purchase)
   ms-purchase:
@@ -40,6 +45,8 @@ services:
       - "4004:4004"
     networks:
       - app-net
+    depends_on:
+      - ms-catalog  # ms-purchase depende de ms-catalog
 
   # Microservicio Orquestador (orchestrator)
   orchestrator:
@@ -50,6 +57,11 @@ services:
       - "4000:4000"
     networks:
       - app-net
+    depends_on:
+      - ms-catalog   # orquestador depende de todos los microservicios
+      - ms-inventory
+      - ms-payment
+      - ms-purchase
 
 networks:
   app-net:
