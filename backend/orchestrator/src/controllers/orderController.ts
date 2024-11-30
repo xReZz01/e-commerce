@@ -39,6 +39,17 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'No hay suficiente stock disponible' });
     }
 
+    // Obtener precio del producto del microservicio de catálogo
+    let price;
+    try {
+      const productResponse = await axios.get(`http://localhost:4001/api/products/${product_id}`);
+      price = productResponse.data.price;
+    } catch (error) {
+      console.error('Error al obtener el precio del producto:', error);
+      await transaction.rollback();
+      return res.status(500).json({ message: 'Error al obtener el precio del producto' });
+    }
+
     // Procesar pago
     let paymentId;
     let purchaseId;
@@ -59,7 +70,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const order = {
         product_id,
         quantity,
-        total_price: paymentResponse.data.total_price,
+        total_price: price * quantity,
         payment_method,
         mailing_address
       };
@@ -114,10 +125,14 @@ const compensatePayment = async (paymentId: number) => {
 // Función de compensación del inventario
 const compensateInventory = async (product_id: number, quantity: number) => {
   try {
-    const stock = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
-    const newStock = stock.data.quantity + quantity;
-    await axios.put(`http://localhost:4002/api/inventory/${product_id}`, { quantity: newStock });
-    console.log('Stock revertido');
+    const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
+    if (stockResponse.data) {
+      const newStock = stockResponse.data.quantity + quantity;
+      await axios.put(`http://localhost:4002/api/inventory/${product_id}`, { quantity: newStock });
+      console.log('Stock revertido');
+    } else {
+      console.error('Stock no encontrado para revertir');
+    }
   } catch (error) {
     console.error('Error al revertir el stock:', error);
   }
