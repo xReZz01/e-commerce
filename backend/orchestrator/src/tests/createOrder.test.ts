@@ -1,21 +1,23 @@
-import axios from 'axios'; // Importa axios para realizar solicitudes HTTP simuladas.
-import db from '../config/db'; // Importa la configuración de la base de datos.
-import { createOrder } from '../controllers/orderController'; // Importa la función que se va a probar.
+import axios from 'axios'; 
+import db from '../config/db'; 
+import { createOrder } from '../controllers/orderController'; 
+
+// Para correr test npx jest --detectOpenHandles --forceExit
 
 jest.mock('axios'); // Simula el módulo axios para controlar sus respuestas en los tests.
 jest.mock('../config/db'); // Simula la configuración de la base de datos.
 
 describe('Order Controller', () => {
-  let req: any, res: any, next: any;
+  let req: any, res: any;
 
   beforeEach(() => {
     // Inicializa los objetos `req`, `res` y `next` antes de cada prueba.
     req = { 
       body: { 
-        product_id: 1, // Producto de ejemplo con ID 1.
-        quantity: 2, // Cantidad de productos a ordenar.
-        payment_method: 'Tarejeta', // Método de pago simulado.
-        mailing_address: 'Mi casa' // Dirección de envío.
+        product_id: 1, 
+        quantity: 2, 
+        payment_method: 'Tarejeta',
+        mailing_address: 'Mi casa' 
       } 
     };
 
@@ -24,7 +26,6 @@ describe('Order Controller', () => {
       json: jest.fn() // Simula el método `json` para capturar respuestas JSON.
     };
 
-    next = jest.fn(); // Simula el middleware `next`.
 
     // Simula una transacción con métodos `commit` y `rollback`.
     const transaction = {
@@ -36,7 +37,7 @@ describe('Order Controller', () => {
     (db.transaction as jest.Mock).mockResolvedValue(transaction);
   });
 
-  it('should create an order successfully', async () => {
+  it('debe crear una orden correctamente', async () => {
     // Simula respuestas de axios para consultas al inventario y al catálogo de productos.
     (axios.get as jest.Mock).mockImplementation((url) => {
       if (url.includes('/api/inventory')) 
@@ -65,7 +66,7 @@ describe('Order Controller', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Orden creada correctamente' }));
   });
 
-  it('should rollback transaction if payment fails', async () => {
+  it('debe hacer rollback si el pago falla', async () => {
     // Simula un fallo en el pago (código de estado 400).
     (axios.post as jest.Mock).mockImplementation((url) => {
       if (url.includes('/api/payments')) 
