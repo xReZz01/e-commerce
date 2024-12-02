@@ -5,113 +5,175 @@ import db from "../config/db";
 import cache from 'memory-cache';
 
 class ProductController {
-    // Obtener todos los productos
+    // Método genérico para manejar reintentos
+    static async withRetries(action: () => Promise<any>, retries: number = 3): Promise<any> {
+        let attempt = 0;
+        while (attempt < retries) {
+            try {
+                return await action();
+            } catch (error) {
+                attempt++;
+                if (attempt >= retries) {
+                    throw error; // Lanzar error si se superan los intentos
+                }
+            }
+        }
+    }
+
+    // Obtener todos los productos con reintentos
     static async getProducts(req: Request, res: Response): Promise<Response> {
         try {
-            // Buscar en cache todos los productos
-            const cachedProducts = cache.get('allProducts');
-            if (cachedProducts) {
-                return res.json({ data: cachedProducts });
-            }
-
-            // Filtros
-            const products = await Product.findAll({
-                order: [['id', 'DESC']],
-                attributes: { exclude: ['createdAt', 'updatedAt'] }
+            const result = await ProductController.withRetries(async () => {
+                const cachedProducts = cache.get('allProducts');
+                if (cachedProducts) {
+                    console.log("Productos obtenidos del caché");
+                    return cachedProducts;
+                }
+                const products = await Product.findAll({
+                    order: [['id', 'DESC']],
+                    attributes: { exclude: ['createdAt', 'updatedAt'] },
+                });
+                cache.put('allProducts', products, 300000); // Cache por 5 minutos
+                console.log("Productos obtenidos de la base de datos");
+                return products;
             });
-
-            // Si no encuentra en cache, traerlo desde la base de datos y almacenarlo en cache
-            cache.put('allProducts', products, 60000); // Cache por 60 segundos
-            return res.json({ data: products });
+            return res.json({ data: result });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ error: 'Error al obtener los productos' });
         }
     }
 
-    // Obtener un producto por ID
+    // Obtener producto por ID con reintentos
     static async getProductById(req: Request, res: Response): Promise<Response> {
         try {
-            // Buscamos en cache el producto por ID
             const { id } = req.params;
-            const cachedProduct = cache.get(`product_${id}`);
-            if (cachedProduct) {
-                return res.json({ data: cachedProduct });
+            
+            // Verificar si la ID proporcionada es válida
+            if (!id || isNaN(Number(id))) {
+                return res.status(400).json({ error: 'ID de producto no válida' });
             }
 
-            // Si no encuentra en cache, traerlo desde la base de datos y almacenarlo en cache
-            const product = await Product.findByPk(id);
-            if (!product) {
-                return res.status(404).json({ error: 'Producto no encontrado' });
-            }
+            const result = await ProductController.withRetries(async () => {
+                // Intentar recuperar el producto desde el caché
+                const cachedProduct = cache.get(`product_${id}`);
+                if (cachedProduct) {
+                    console.log(`Producto ${id} obtenido del caché`);
+                    return cachedProduct; // Si existe en caché, devolverlo
+                }
 
-            // Almacenar en cache
-            cache.put(`product_${id}`, product, 60000); // Cache por 60 segundos
-            return res.json({ data: product });
+                // Si no existe en caché, consultar la base de datos
+                const product = await Product.findByPk(id);
+                if (!product) {
+                    throw new Error('Producto no encontrado');
+                }
+
+                // Almacenar el producto en caché por 5 minutos
+                cache.put(`product_${id}`, product, 300000); // 5 minutos (300000 ms)
+                console.log(`Producto ${id} obtenido de la base de datos`);
+                return product;
+            });
+            return res.json({ data: result });
         } catch (error) {
+            // Manejo de error con mensajes claros
+            if (error.message === 'Producto no encontrado') {
+                return res.status(404).json({ error: 'Producto no encontrado con la ID proporcionada' });
+            }
             console.error(error);
-            return res.status(500).json({ error: 'Error al obtener el producto' });
+            return res.status(500).json({ error: 'Error interno del servidor' });
         }
     }
 
-    // Crear un nuevo producto
+    // Crear un producto con reintentos y verificación de nombre único
     static async createProduct(req: Request, res: Response): Promise<Response> {
-        const transaction: Transaction = await db.transaction();
         try {
-            // Crear producto
-            const product = await Product.create(req.body, { transaction });
-            // Limpiar caché después de crear un nuevo producto
-            cache.del('allProducts');
-            await transaction.commit();
-            return res.status(201).json({ data: product });
+            const { name } = req.body;
+
+            // Verificar si ya existe un producto con el mismo nombre
+            const existingProduct = await Product.findOne({ where: { name } });
+            if (existingProduct) {
+                return res.status(400).json({ error: 'Ya existe un producto con este nombre' });
+            }
+
+            const result = await ProductController.withRetries(async () => {
+                const transaction: Transaction = await db.transaction();
+                try {
+                    // Crear el nuevo producto
+                    const product = await Product.create(req.body, { transaction });
+                    
+                    // Limpiar el caché
+                    cache.del('allProducts');
+                    
+                    await transaction.commit();
+                    console.log("Producto creado");
+                    return product;
+                } catch (error) {
+                    await transaction.rollback();
+                    throw error;
+                }
+            });
+
+            return res.status(201).json({ data: result });
         } catch (error) {
-            await transaction.rollback(); 
             console.error(error);
             return res.status(500).json({ error: 'Error al crear el producto' });
         }
     }
 
-    // Actualizar un producto existente
+    // Actualizar un producto existente con reintentos
     static async updateProduct(req: Request, res: Response): Promise<Response> {
-        const transaction: Transaction = await db.transaction();
+        const { id } = req.params;
         try {
-            // Buscar producto a modificar
-            const { id } = req.params;
-            const product = await Product.findByPk(id, { transaction });
-            if (!product) {
-                await transaction.rollback();
-                return res.status(404).json({ error: 'Producto no encontrado' });
-            }
-            await product.update(req.body, { transaction });
-            await transaction.commit();
-            return res.json({ data: product });
+            const result = await ProductController.withRetries(async () => {
+                const transaction: Transaction = await db.transaction();
+                try {
+                    const product = await Product.findByPk(id, { transaction });
+                    if (!product) {
+                        throw new Error('Producto no encontrado');
+                    }
+                    await product.update(req.body, { transaction });
+                    await transaction.commit();
+                    console.log(`Producto ${id} actualizado`);
+                    return product;
+                } catch (error) {
+                    await transaction.rollback();
+                    throw error;
+                }
+            });
+            return res.json({ data: result });
         } catch (error) {
-            await transaction.rollback();
+            const statusCode = error.message === 'Producto no encontrado' ? 404 : 500;
             console.error(error);
-            return res.status(500).json({ error: 'Error al actualizar el producto' });
+            return res.status(statusCode).json({ error: error.message });
         }
     }
 
-    // Activar/desactivar un producto
+    // Activar/desactivar producto con reintentos
     static async updateActivate(req: Request, res: Response): Promise<Response> {
-        const transaction: Transaction = await db.transaction();
+        const { id } = req.params;
         try {
-            // Buscar producto a activar/desactivar
-            const { id } = req.params;
-            const product = await Product.findByPk(id, { transaction });
-            if (!product) {
-                await transaction.rollback();
-                return res.status(404).json({ error: 'Producto no encontrado' });
-            }
-            // Cambiar estado del producto
-            product.activate = !product.dataValues.activate;
-            await product.save({ transaction });
-            await transaction.commit();
-            return res.json({ data: product });
+            const result = await ProductController.withRetries(async () => {
+                const transaction: Transaction = await db.transaction();
+                try {
+                    const product = await Product.findByPk(id, { transaction });
+                    if (!product) {
+                        throw new Error('Producto no encontrado');
+                    }
+                    product.activate = !product.dataValues.activate;
+                    await product.save({ transaction });
+                    await transaction.commit();
+                    console.log(`Producto ${id} activado/desactivado`);
+                    return product;
+                } catch (error) {
+                    await transaction.rollback();
+                    throw error;
+                }
+            });
+            return res.json({ data: result });
         } catch (error) {
-            await transaction.rollback();
+            const statusCode = error.message === 'Producto no encontrado' ? 404 : 500;
             console.error(error);
-            return res.status(500).json({ error: 'Error al actualizar el estado del producto' });
+            return res.status(statusCode).json({ error: error.message });
         }
     }
 }

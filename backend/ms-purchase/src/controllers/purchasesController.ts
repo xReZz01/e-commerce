@@ -5,6 +5,21 @@ import Purchase from '../models/Purchase.model';
 import cache from 'memory-cache';
 
 class PurchaseController {
+    // Método genérico para manejar reintentos
+    static async withRetries(action: () => Promise<any>, retries: number = 3): Promise<any> {
+        let attempt = 0;
+        while (attempt < retries) {
+            try {
+                return await action();
+            } catch (error) {
+                attempt++;
+                if (attempt >= retries) {
+                    throw error; // Lanzar error si se superan los intentos
+                }
+            }
+        }
+    }
+
     // Método para obtener todas las compras
     static async getPurchases(req: Request, res: Response): Promise<Response> {
         try {
@@ -18,10 +33,11 @@ class PurchaseController {
 
             // Si no esta en cache, buscar en la base de datos
             const purchases = await Purchase.findAll();
-            cache.put(cacheKey, purchases, 60000); // Cache por 60 segundos
+            cache.put(cacheKey, purchases, 300000); // Cache por 5 minutos
             return res.status(200).json(purchases);
         } catch (error) {
-            return res.status(500).json({ message: 'Error al obtener compras', error });
+            console.error('Error al obtener compras'); // Solo mensaje general
+            return res.status(500).json({ message: 'Error al obtener compras' });
         }
     }
 
@@ -33,9 +49,10 @@ class PurchaseController {
         const transaction = await db.transaction();
 
         try {
-            // Obtener información del producto
-            const productResponse = await axios.get(`http://localhost:4001/api/products/${product_id}`);
-            const product = productResponse.data.data;
+            // Usar reintentos para obtener información del producto
+            const product = await PurchaseController.withRetries(() => axios.get(`http://localhost:4001/api/products/${product_id}`), 3)
+                .then(response => response.data.data)
+                .catch(() => null);
 
             if (!product) {
                 await transaction.rollback();
@@ -53,7 +70,7 @@ class PurchaseController {
             return res.json({ message: 'Compra creada', purchase });
         } catch (error) {
             await transaction.rollback();
-            console.error(error);
+            console.error('Error al crear la compra'); // Solo mensaje general
             return res.status(500).json({ error: 'Error al crear la compra' });
         }
     }
@@ -65,7 +82,7 @@ class PurchaseController {
         const transaction = await db.transaction();
 
         try {
-            const purchase = await Purchase.findByPk(purchase_id, { transaction });
+            const purchase = await PurchaseController.withRetries(() => Purchase.findByPk(purchase_id, { transaction }), 3);
 
             if (!purchase) {
                 await transaction.rollback();
@@ -81,7 +98,7 @@ class PurchaseController {
             return res.json({ message: 'Compra revertida' });
         } catch (error) {
             await transaction.rollback();
-            console.error(error);
+            console.error('Error al revertir la compra'); // Solo mensaje general
             return res.status(500).json({ error: 'Error al revertir la compra' });
         }
     }

@@ -2,7 +2,7 @@ import axios from 'axios';
 import db from '../config/db'; 
 import { createOrder } from '../controllers/orderController'; 
 
-// Para correr test npx jest --detectOpenHandles --forceExit
+// Para correr test: npx jest --detectOpenHandles --forceExit
 
 jest.mock('axios'); // Simula el módulo axios para controlar sus respuestas en los tests.
 jest.mock('../config/db'); // Simula la configuración de la base de datos.
@@ -11,7 +11,7 @@ describe('Order Controller', () => {
   let req: any, res: any;
 
   beforeEach(() => {
-    // Inicializa los objetos `req`, `res` y `next` antes de cada prueba.
+    // Inicializa los objetos `req`, `res` antes de cada prueba.
     req = { 
       body: { 
         product_id: 1, 
