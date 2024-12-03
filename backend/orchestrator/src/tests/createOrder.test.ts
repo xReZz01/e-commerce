@@ -1,86 +1,71 @@
-import axios from 'axios'; 
-import db from '../config/db'; 
-import { createOrder } from '../controllers/orderController'; 
+import { Request, Response } from 'express';
+import Redis from 'ioredis-mock';
+import axios from 'axios';
+import MockAdapter from 'axios-mock-adapter';
+import { createOrder } from '../controllers/orderController'; // Ajusta la ruta según sea necesario
 
-// Para correr test: npx jest --detectOpenHandles --forceExit
+jest.mock('../config/db', () => ({
+  transaction: jest.fn().mockReturnValue({
+    commit: jest.fn(),
+    rollback: jest.fn(),
+  }),
+}));
 
-jest.mock('axios'); // Simula el módulo axios para controlar sus respuestas en los tests.
-jest.mock('../config/db'); // Simula la configuración de la base de datos.
+const redis = new Redis();
+const mockAxios = new MockAdapter(axios);
 
-describe('Order Controller', () => {
-  let req: any, res: any;
+describe('createOrder', () => {
+  let req: Partial<Request>;
+  let res: Partial<Response>;
 
   beforeEach(() => {
-    // Inicializa los objetos `req`, `res` antes de cada prueba.
-    req = { 
-      body: { 
-        product_id: 1, 
-        quantity: 2, 
-        payment_method: 'Tarejeta',
-        mailing_address: 'Mi casa' 
-      } 
+    req = {
+      body: {
+        product_id: 1,
+        quantity: 2,
+        payment_method: 'credit_card',
+        mailing_address: '123 Main St',
+      },
+    };
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
     };
 
-    res = { 
-      status: jest.fn().mockReturnThis(), // Simula el método `status` que devuelve el objeto `res`.
-      json: jest.fn() // Simula el método `json` para capturar respuestas JSON.
-    };
-
-
-    // Simula una transacción con métodos `commit` y `rollback`.
-    const transaction = {
-      commit: jest.fn(), // Simula la confirmación de la transacción.
-      rollback: jest.fn() // Simula la reversión de la transacción.
-    };
-
-    // Mock para devolver la transacción simulada al llamar `db.transaction`.
-    (db.transaction as jest.Mock).mockResolvedValue(transaction);
+    redis.flushall();
+    mockAxios.reset();
   });
 
-  it('debe crear una orden correctamente', async () => {
-    // Simula respuestas de axios para consultas al inventario y al catálogo de productos.
-    (axios.get as jest.Mock).mockImplementation((url) => {
-      if (url.includes('/api/inventory')) 
-        return Promise.resolve({ data: { quantity: 10 } }); // Inventario con suficiente stock.
-      if (url.includes('/api/products')) 
-        return Promise.resolve({ data: { price: 100 } }); // Producto con precio de 100.
-      return Promise.reject(); // Rechaza cualquier otro caso.
-    });
+  it('should create an order successfully', async () => {
+    redis.set('stock_1', JSON.stringify({ quantity: 10 }));
 
-    // Simula respuestas de axios para el procesamiento de pagos y creación de órdenes.
-    (axios.post as jest.Mock).mockImplementation((url) => {
-      if (url.includes('/api/payments')) 
-        return Promise.resolve({ status: 201, data: { id: 1 } }); // Pago exitoso con ID 1.
-      if (url.includes('/api/purchases')) 
-        return Promise.resolve({ status: 200, data: { id: 1 } }); // Orden creada con éxito.
-      return Promise.reject(); // Rechaza cualquier otro caso.
-    });
+    mockAxios.onGet('http://localhost:4001/api/products/1').reply(200, { price: 100 });
+    mockAxios.onPost('http://localhost:4003/api/payments').reply(201, { id: 1 });
+    mockAxios.onPost('http://localhost:4004/api/purchases').reply(200, { id: 1 });
 
-    // Llama a la función `createOrder` con los datos simulados.
-    await createOrder(req, res);
+    await createOrder(req as Request, res as Response);
 
-    // Verifica que la respuesta tenga un código de estado 200.
     expect(res.status).toHaveBeenCalledWith(200);
-
-    // Verifica que la respuesta JSON contiene el mensaje de éxito esperado.
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Orden creada correctamente' }));
+    expect(res.json).toHaveBeenCalledWith({ message: 'Orden creada correctamente' });
   });
 
-  it('debe hacer rollback si el pago falla', async () => {
-    // Simula un fallo en el pago (código de estado 400).
-    (axios.post as jest.Mock).mockImplementation((url) => {
-      if (url.includes('/api/payments')) 
-        return Promise.resolve({ status: 400 }); // Pago fallido.
-      return Promise.reject(); // Rechaza cualquier otro caso.
-    });
+  it('should return 400 if stock is insufficient', async () => {
+    redis.set('stock_1', JSON.stringify({ quantity: 1 }));
 
-    // Llama a la función `createOrder` con los datos simulados.
-    await createOrder(req, res);
+    await createOrder(req as Request, res as Response);
 
-    // Verifica que la respuesta tenga un código de estado 400.
     expect(res.status).toHaveBeenCalledWith(400);
-
-    // Verifica que la respuesta JSON contiene el mensaje de fallo esperado.
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Pago fallido' }));
+    expect(res.json).toHaveBeenCalledWith({ message: 'No hay suficiente stock disponible' });
   });
+
+  it('should return 500 if there is an error obtaining stock', async () => {
+    mockAxios.onGet('http://localhost:4002/api/inventory/1').networkError();
+
+    await createOrder(req as Request, res as Response);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Error al obtener stock' });
+  });
+
+  // Agrega más tests según sea necesario
 });

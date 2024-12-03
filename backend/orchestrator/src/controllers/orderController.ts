@@ -1,7 +1,16 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
-import cache from 'memory-cache';
+import Redis from 'ioredis';
+
+const redis = new Redis({
+  host: 'redis',
+  port: 6379,
+});
+
+redis.on('error', (err) => {
+  console.error('Redis error:', err);
+});
 
 // Método genérico para manejar reintentos
 const withRetries = async (action: () => Promise<any>, retries: number = 3): Promise<any> => {
@@ -33,7 +42,7 @@ const createOrder = async (req: Request, res: Response) => {
 
     // Verificar inventario en cache
     const stockCacheKey = `stock_${product_id}`;
-    let stock = cache.get(stockCacheKey);
+    let stock: { quantity: number } | null = JSON.parse(await redis.get(stockCacheKey));
 
     if (!stock) {
       try {
@@ -42,15 +51,17 @@ const createOrder = async (req: Request, res: Response) => {
           const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
           return stockResponse.data;
         });
-        cache.put(stockCacheKey, stock, 120000); // Cache por 2 minutos
+        await redis.set(stockCacheKey, JSON.stringify(stock), 'EX', 120); // Cache por 2 minutos
       } catch (error) {
         console.error('Error al obtener stock:', error.message);
         await transaction.rollback();
         return res.status(500).json({ message: 'Error al obtener stock' });
       }
+    } else {
+      stock = typeof stock === 'string' ? JSON.parse(stock) : stock;
     }
 
-    if (!stock || stock.quantity < quantity) {
+    if (stock === null || typeof stock !== 'object' || (stock && stock.quantity < quantity)) {
       await transaction.rollback();
       return res.status(400).json({ message: 'No hay suficiente stock disponible' });
     }
@@ -106,7 +117,7 @@ const createOrder = async (req: Request, res: Response) => {
       await transaction.commit();
 
       // Actualizar el caché
-      cache.del(`stock_${product_id}`); // Invalida el caché del stock del producto
+      await redis.del(`stock_${product_id}`); // Invalida el caché del stock del producto
 
       return res.status(200).json({ message: 'Orden creada correctamente' });
     } catch (error) {

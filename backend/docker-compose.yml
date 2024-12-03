@@ -9,6 +9,10 @@ services:
       - "4001:4001"
     networks:
       - app-net
+    environment:
+      - DATABASE_URL=postgres://postgres:banana@postgres:5432/microservicios
+    depends_on:
+      - postgres
 
   ms-inventory:
     build:
@@ -18,7 +22,10 @@ services:
       - "4002:4002"
     networks:
       - app-net
+    environment:
+      - DATABASE_URL=postgres://postgres:banana@postgres:5432/microservicios
     depends_on:
+      - postgres
       - ms-catalog
 
   ms-payment:
@@ -29,7 +36,10 @@ services:
       - "4003:4003"
     networks:
       - app-net
+    environment:
+      - DATABASE_URL=postgres://postgres:banana@postgres:5432/microservicios
     depends_on:
+      - postgres
       - ms-inventory
       - ms-catalog
 
@@ -41,7 +51,10 @@ services:
       - "4004:4004"
     networks:
       - app-net
+    environment:
+      - DATABASE_URL=postgres://postgres:banana@postgres:5432/microservicios
     depends_on:
+      - postgres
       - ms-catalog
 
   orchestrator:
@@ -58,6 +71,42 @@ services:
       - ms-payment
       - ms-purchase
 
+  redis:
+    image: redis:latest  # Usar la imagen oficial de Redis
+    container_name: redis
+    ports:
+      - "6379:6379"  # Exponer el puerto 6379 para acceder a Redis desde fuera de Docker
+    networks:
+      - app-net  # Redis estará en la misma red para que los otros servicios puedan acceder a él
+
+  postgres:
+    image: postgres:latest  # Usar la imagen oficial de PostgreSQL
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres  # Nombre de usuario de la base de datos
+      POSTGRES_PASSWORD: banana  # Contraseña para el usuario
+      POSTGRES_DB: microservicios  # Nombre de la base de datos
+    ports:
+      - "5432:5432"  # Exponer el puerto de PostgreSQL
+    networks:
+      - app-net  # Conectar PostgreSQL a la misma red interna
+    volumes:
+      - postgres-data:/var/lib/postgres/data  # Volumen para persistencia de datos
+
+  k6:
+    image: grafana/k6:latest  # Usa la imagen oficial de K6
+    container_name: k6
+    volumes:
+      - ./k6:/scripts  # Montar el directorio local para los scripts de prueba
+    networks:
+      - app-net
+    entrypoint: [""]  # Evita que se ejecute K6 automáticamente
+    depends_on:
+      - orchestrator  # Asegúrate de que tus servicios principales estén disponibles
+
 networks:
   app-net:
     driver: bridge
+
+volumes:
+  postgres-data:  # Definir volumen persistente para los datos de PostgreSQL

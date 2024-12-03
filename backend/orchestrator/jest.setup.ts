@@ -1,3 +1,6 @@
+import { config } from 'dotenv';
+config({ path: '.env.test' });
+
 import db from './src/config/db';
 import { beforeAll, afterAll, afterEach } from '@jest/globals';
 import { jest } from '@jest/globals';
