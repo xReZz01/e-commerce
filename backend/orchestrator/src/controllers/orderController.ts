@@ -86,7 +86,7 @@ const createOrder = async (req: Request, res: Response) => {
       const paymentData = {
         product_id,
         quantity,
-        payment_method
+        payment_method,
       };
       const paymentResponse = await axios.post('http://localhost:4003/api/payments', paymentData);
       if (paymentResponse.status !== 201) {
@@ -101,7 +101,7 @@ const createOrder = async (req: Request, res: Response) => {
         quantity,
         total_price: price * quantity,
         payment_method,
-        mailing_address
+        mailing_address,
       };
       const purchaseResponse = await axios.post('http://localhost:4004/api/purchases', order);
       if (purchaseResponse.status !== 200) {

@@ -80,7 +80,7 @@ services:
       - app-net  # Redis estará en la misma red para que los otros servicios puedan acceder a él
 
   postgres:
-    image: postgres:latest  # Usar la imagen oficial de PostgreSQL
+    image: postgres:latest  
     container_name: postgres
     environment:
       POSTGRES_USER: postgres  # Nombre de usuario de la base de datos
@@ -94,15 +94,15 @@ services:
       - postgres-data:/var/lib/postgres/data  # Volumen para persistencia de datos
 
   k6:
-    image: grafana/k6:latest  # Usa la imagen oficial de K6
+    image: grafana/k6:latest
     container_name: k6
     volumes:
-      - ./k6:/scripts  # Montar el directorio local para los scripts de prueba
+      - ./orchestrator/src/tests/k6:/tests 
     networks:
       - app-net
-    entrypoint: [""]  # Evita que se ejecute K6 automáticamente
     depends_on:
-      - orchestrator  # Asegúrate de que tus servicios principales estén disponibles
+      - orchestrator  
+
 
 networks:
   app-net:
