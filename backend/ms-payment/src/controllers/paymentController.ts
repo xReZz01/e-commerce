@@ -36,7 +36,7 @@ class PaymentController {
                 order: [['createdAt', 'DESC']],
             });
 
-            cache.put(cacheKey, payments, 300000);
+            cache.put(cacheKey, payments, 120000); // Cache 2 minutos
             console.log('Pagos obtenidos desde la base de datos');
             return res.status(200).json({ data: payments });
         } catch (error) {
@@ -49,7 +49,7 @@ class PaymentController {
     static async getPaymentById(req: Request, res: Response): Promise<Response> {
         const { id } = req.params;
         try {
-            const cacheKey = `payment_${id}`;
+            const cacheKey = `${id}`;
             const cachedPayment = cache.get(cacheKey);
 
             if (cachedPayment) {
@@ -65,7 +65,7 @@ class PaymentController {
                 return res.status(404).json({ message: 'Pago no encontrado' });
             }
 
-            cache.put(cacheKey, payment, 300000);
+            cache.put(cacheKey, payment, 120000); // Cache 2 minutos
             console.log('Pago obtenido desde la base de datos');
             return res.status(200).json(payment);
         } catch (error) {
@@ -138,8 +138,8 @@ class PaymentController {
             await transaction.commit();
 
             // Cachear el nuevo pago y limpiar caché de pagos
-            const cacheKey = `payment_${newPayment.id}`;
-            cache.put(cacheKey, newPayment, 300000); // Cache por 5 minutos
+            const cacheKey = `${newPayment.id}`;
+            cache.put(cacheKey, newPayment, 120000); // Cache por 2 minutos
             cache.del('allPayments'); // Invalida el caché de todos los pagos
 
             console.log('Pago procesado exitosamente');
@@ -147,10 +147,6 @@ class PaymentController {
         } catch (error) {
             console.error('Error en processPayment:', error.response?.data || error.message);
             await transaction.rollback();
-
-            if (paymentId) {
-                await PaymentController.compensatePayment(paymentId);
-            }
 
             if (axios.isAxiosError(error)) {
                 return res.status(500).json({ message: 'Error al procesar el pago', error: error.response?.data });
@@ -160,28 +156,37 @@ class PaymentController {
         }
     }
 
-    static async compensatePayment(paymentId: number) {
-        console.log('paymentId recibido:', paymentId); // Log del valor recibido
+    // Método para revertir el pago
+    static async compensatePayment(req: Request, res: Response): Promise<Response> {
+        const { paymentId } = req.params;  // Cambia de `req.body` a `req.params`
+    
+        const transaction = await db.transaction();  // Inicia una transacción
+    
         try {
-            if (isNaN(paymentId)) {
-                console.error('ID de pago no válido');
-                return;
+            // Intentar encontrar el pago usando el ID recibido
+            const payment = await PaymentController.withRetries(() => Payments.findByPk(paymentId, { transaction }), 3);
+    
+            if (!payment) {
+                await transaction.rollback();  // Si no se encuentra el pago, revertir la transacción
+                return res.status(404).json({ error: 'Pago no encontrado' });
             }
     
-            const url = `http://localhost:4003/api/payments/${paymentId}`;
-            console.log('Revirtiendo pago con ID:', paymentId);
-            
-            const response = await axios.delete(url);
-            
-            if (response.status === 200) {
-                console.log('Pago revertido exitosamente:', response.data);
-            } else {
-                console.error('Error al revertir el pago, código de estado:', response.status);
-            }
+            // Revertir el pago (en este caso, eliminarlo)
+            await payment.destroy({ transaction });
+    
+            await transaction.commit();  // Si todo sale bien, confirmar la transacción
+    
+            // Invalidate the cache for payments (similar to how you invalidate purchases)
+            cache.del('allPayments'); // Invalida el caché de todos los pagos
+    
+            return res.json({ message: 'Pago revertido exitosamente' });
         } catch (error: any) {
+            await transaction.rollback();  // En caso de error, revertir la transacción
             console.error('Error al revertir el pago:', error.message);
+            return res.status(500).json({ error: 'Error al revertir el pago' });
         }
     }
+    
 }
 
 export default PaymentController;

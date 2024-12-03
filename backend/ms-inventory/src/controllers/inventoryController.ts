@@ -16,7 +16,7 @@ class InventoryController {
             }
 
             const stocks = await Stock.findAll();
-            cache.put(cacheKey, stocks, 300000); // cache 5 minutos
+            cache.put(cacheKey, stocks, 120000); // cache 2 minutos
             return res.status(200).json(stocks);
         } catch (error) {
             return res.status(500).json({ message: 'Error al obtener datos del inventario', error });
@@ -39,7 +39,7 @@ class InventoryController {
                 return res.status(404).json({ message: 'Stock no encontrado' });
             }
 
-            cache.put(cacheKey, stock, 300000 ); // Cache por 5 minutos
+            cache.put(cacheKey, stock, 120000 ); // Cache por 2 minutos
             return res.status(200).json(stock);
         } catch (error) {
             return res.status(500).json({ message: 'Error al obtener stock', error });
@@ -77,7 +77,7 @@ class InventoryController {
                     await existingStock.save({ transaction });
                     await transaction.commit();
 
-                    cache.put(`stock_${product_id}`, existingStock, 300000); // cache 5 minutos
+                    cache.put(`stock_${product_id}`, existingStock, 120000); // cache 2 minutos
                     cache.del('allStocks');
                     return res.status(200).json(existingStock);
                 } else {
@@ -87,7 +87,7 @@ class InventoryController {
                     );
                     await transaction.commit();
 
-                    cache.put(`stock_${product_id}`, newStock, 300000); // cache 5 minutos
+                    cache.put(`stock_${product_id}`, newStock, 120000); // cache 2 minutos
                     cache.del('allStocks');
                     return res.status(201).json(newStock);
                 }
@@ -142,7 +142,7 @@ class InventoryController {
                 await stock.save({ transaction });
                 await transaction.commit();
 
-                cache.put(`stock_${product_id}`, stock, 300000); // cache 5 minutos
+                cache.put(`stock_${product_id}`, stock, 120000); // cache 2 minutos
                 cache.del('allStocks');
                 return res.status(200).json(stock);
             } catch (error) {
@@ -180,7 +180,7 @@ class InventoryController {
             await stock.save({ transaction });
             await transaction.commit();
 
-            cache.put(`stock_${product_id}`, stock, 300000); // cache 5 minutos
+            cache.put(`stock_${product_id}`, stock, 120000); // cache 2 minutos
             cache.del('allStocks');
             return res.status(200).json({ message: 'Stock actualizado exitosamente' });
         } catch (error) {

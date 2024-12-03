@@ -11,6 +11,7 @@ const withRetries = async (action: () => Promise<any>, retries: number = 3): Pro
       return await action();
     } catch (error) {
       attempt++;
+      console.error(`Intento ${attempt} fallido:`, error.message);
       if (attempt >= retries) {
         throw error; // Lanzar error si se superan los intentos
       }
@@ -41,9 +42,9 @@ const createOrder = async (req: Request, res: Response) => {
           const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
           return stockResponse.data;
         });
-        cache.put(stockCacheKey, stock, 300000); // Cache por 5 minutos
+        cache.put(stockCacheKey, stock, 120000); // Cache por 2 minutos
       } catch (error) {
-        console.error('Error al obtener stock');
+        console.error('Error al obtener stock:', error.message);
         await transaction.rollback();
         return res.status(500).json({ message: 'Error al obtener stock' });
       }
@@ -62,7 +63,7 @@ const createOrder = async (req: Request, res: Response) => {
         return productResponse.data.price;
       });
     } catch (error) {
-      console.error('Error al obtener el precio del producto');
+      console.error('Error al obtener el precio del producto:', error.message);
       await transaction.rollback();
       return res.status(500).json({ message: 'Error al obtener el precio del producto' });
     }
@@ -109,7 +110,7 @@ const createOrder = async (req: Request, res: Response) => {
 
       return res.status(200).json({ message: 'Orden creada correctamente' });
     } catch (error) {
-      console.error('Error al procesar el pago o crear la orden');
+      console.error('Error al procesar el pago o crear la orden:', error.message);
       await transaction.rollback();
       if (paymentId) {
         await compensatePayment(paymentId);  // Revertir pago si ya se creó
@@ -123,7 +124,7 @@ const createOrder = async (req: Request, res: Response) => {
       return res.status(500).json({ message: 'No se pudo realizar la compra' });
     }
   } catch (error) {
-    console.error('Error al crear la orden');
+    console.error('Error al crear la orden:', error.message);
     await transaction.rollback();
     return res.status(500).json({ message: 'Error interno del servidor' });
   }
@@ -133,53 +134,39 @@ const createOrder = async (req: Request, res: Response) => {
 const compensatePayment = async (paymentId: number) => {
   try {
     console.log(`Intentando revertir el pago con ID: ${paymentId}`);
-
     const response = await axios.delete(`http://localhost:4003/api/payments/${paymentId}`);
 
     if (response.status === 200) {
       console.log('Pago revertido correctamente');
     } else {
       console.error(`Error al revertir el pago, status: ${response.status}`);
-      if (response.data) {
-        console.error('Detalles del error:', response.data);
-      }
+      console.error('Detalles del error:', response.data);
     }
   } catch (error) {
     console.error('Error al revertir el pago:', error.message);
-
-    if (axios.isAxiosError(error)) {
-      console.error('Detalles del error de Axios:', error.response?.data);
-      console.error('Detalles del error de Axios, código:', error.response?.status);
-    } else {
-      console.error('Error no relacionado con Axios:', error);
-    }
+    // Reintentos en caso de error transitorio
+    await withRetries(() => compensatePayment(paymentId), 3); 
   }
 };
 
 // Función de compensación del inventario
 const compensateInventory = async (product_id: number, quantity: number) => {
   try {
-    // Obtener el stock actual
-    const stockResponse = await axios.get(`http://localhost:4002/api/inventory/${product_id}`);
-    
-    if (stockResponse.data) {
-      // Asegúrate de que 'input_output' se envíe con el valor correcto
-      const response = await axios.put(
-        `http://localhost:4002/api/inventory/revert/${product_id}`, 
-        { 
-          quantity,          // La cantidad que deseas revertir
-          input_output: 1    // Este valor debe ser 1 (entrada) si estás revirtiendo una salida de stock
-        }
-      );
+    if (quantity <= 0) {
+      console.error('Cantidad a revertir no válida');
+      return;
+    }
 
-      if (response.status === 200) {
-        console.log('Stock revertido correctamente');
-      } else {
-        console.error('Error al revertir el stock, estado:', response.status);
-        console.error('Respuesta:', response.data);
-      }
+    const response = await axios.put(`http://localhost:4002/api/inventory/revert/${product_id}`, {
+      quantity,
+      input_output: 1 // Este valor debe ser 1 si estás revirtiendo una salida de stock
+    });
+
+    if (response.status === 200) {
+      console.log('Stock revertido correctamente');
     } else {
-      console.error('Stock no encontrado para revertir');
+      console.error('Error al revertir el stock, estado:', response.status);
+      console.error('Respuesta:', response.data);
     }
   } catch (error) {
     console.error('Error al revertir el stock:', error.response?.data || error.message);
@@ -189,14 +176,17 @@ const compensateInventory = async (product_id: number, quantity: number) => {
 // Función de compensación de la compra
 const compensatePurchase = async (purchaseId: number) => {
   try {
-    const response = await axios.delete(`http://localhost:4004/api/purchases/rollback${purchaseId}`);
+    const response = await axios.delete(`http://localhost:4004/api/purchases/rollback/${purchaseId}`);
     if (response.status === 200) {
       console.log('Orden de compra revertida');
     } else {
-      console.error(`Error al revertir la compra: ${response.status}`);
+      console.error(`Error al revertir la compra, status: ${response.status}`);
+      console.error('Detalles:', response.data);
     }
   } catch (error) {
     console.error('Error al revertir la compra:', error.message);
+    // Reintentos en caso de error transitorio
+    await withRetries(() => compensatePurchase(purchaseId), 3); // Opcional si decides agregar reintentos.
   }
 };
 

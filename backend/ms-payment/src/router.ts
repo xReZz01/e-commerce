@@ -14,6 +14,6 @@ router.get('/:id', handleInputErrors, PaymentController.getPaymentById);
 router.post('/', validatePayment, handleInputErrors, PaymentController.processPayment);
 
 // Ruta para revertir un pago
-router.delete('/:payment_id', handleInputErrors, PaymentController.compensatePayment);
+router.delete('/:paymentId', handleInputErrors, PaymentController.compensatePayment);
 
 export default router;

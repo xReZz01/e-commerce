@@ -33,7 +33,7 @@ class ProductController {
                     order: [['id', 'DESC']],
                     attributes: { exclude: ['createdAt', 'updatedAt'] },
                 });
-                cache.put('allProducts', products, 300000); // Cache por 5 minutos
+                cache.put('allProducts', products, 120000); // Cache por 2 minutos
                 console.log("Productos obtenidos de la base de datos");
                 return products;
             });
@@ -68,8 +68,8 @@ class ProductController {
                     throw new Error('Producto no encontrado');
                 }
 
-                // Almacenar el producto en caché por 5 minutos
-                cache.put(`product_${id}`, product, 300000); // 5 minutos (300000 ms)
+                // Almacenar el producto en caché 
+                cache.put(`product_${id}`, product, 120000); // Cache 2 minutos 
                 console.log(`Producto ${id} obtenido de la base de datos`);
                 return product;
             });

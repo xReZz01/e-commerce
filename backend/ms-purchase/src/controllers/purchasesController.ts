@@ -33,7 +33,7 @@ class PurchaseController {
 
             // Si no esta en cache, buscar en la base de datos
             const purchases = await Purchase.findAll();
-            cache.put(cacheKey, purchases, 300000); // Cache por 5 minutos
+            cache.put(cacheKey, purchases, 120000); // Cache por 2 minutos
             return res.status(200).json(purchases);
         } catch (error) {
             console.error('Error al obtener compras'); // Solo mensaje general
