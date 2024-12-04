@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { handleInputErrors, validatePayment } from './middleware/handleInputErros';
+import { handleInputErrors, validatePayment } from './middleware/handleInputErrors';
 import PaymentController from './controllers/paymentController';
 
 const router = Router();

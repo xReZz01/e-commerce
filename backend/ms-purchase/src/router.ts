@@ -11,6 +11,6 @@ router.get('/', handleInputErrors, PurchaseController.getPurchases);
 router.post('/', handleInputErrors, PurchaseController.createPurchase);
 
 // Ruta para revertir una compra
-router.delete('/rollback', handleInputErrors, PurchaseController.rollbackPurchase);
+router.delete('/:purchase_id', handleInputErrors, PurchaseController.rollbackPurchase);
 
 export default router;

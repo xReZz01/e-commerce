@@ -71,14 +71,6 @@ services:
       - ms-payment
       - ms-purchase
 
-  redis:
-    image: redis:latest  # Usar la imagen oficial de Redis
-    container_name: redis
-    ports:
-      - "6379:6379"  # Exponer el puerto 6379 para acceder a Redis desde fuera de Docker
-    networks:
-      - app-net  # Redis estará en la misma red para que los otros servicios puedan acceder a él
-
   postgres:
     image: postgres:latest  
     container_name: postgres

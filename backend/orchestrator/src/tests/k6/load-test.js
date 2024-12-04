@@ -5,20 +5,20 @@ import { check, sleep } from 'k6';
 
 export let options = {
   stages: [
-    { duration: '10s', target: 50 }, // Incrementa gradualmente a 50 usuarios en 10 segundos
-    { duration: '20s', target: 50 }, // Mantén a 50 usuarios durante 20 segundos
-    { duration: '10s', target: 0 },  // Reduce a 0 usuarios durante 10 segundos
+    { duration: '1s', target: 60 }, // Incrementa rápidamente a 60 usuarios en 1 segundo
+    { duration: '1s', target: 60 }, // Mantén a 60 usuarios durante 1 segundo
+    { duration: '1s', target: 0 },  // Reduce a 0 usuarios durante 1 segundo
   ],
 };
 
 export default function () {
   const url = 'http://localhost:4000/api/order';
   
-  // Datos para la compra (producto con stock insuficiente)
+  // Datos para la compra
   const payload = JSON.stringify({
     product_id: 1, 
-    quantity: 1,  // Suponiendo que la cantidad es mayor al stock disponible
-    payment_method: 'credit_card',
+    quantity: 1,  // Cantidad solicitada por cada usuario
+    payment_method: 'paypal',
     mailing_address: 'mi casa',
   });
 
@@ -28,7 +28,7 @@ export default function () {
     },
   };
 
-  // Enviar la solicitud POST para procesar el pago
+  // Enviar la solicitud POST para procesar la compra
   const response = http.post(url, payload, params);
 
   // Verificar los estados esperados
@@ -45,5 +45,5 @@ export default function () {
     console.log(`Insufficient stock or bad request: ${response.body}`);
   }
 
-  sleep(0.02); // Simula aproximadamente 50 solicitudes por segundo
+  sleep(0.02); // Pausa breve para simular tiempo de procesamiento
 }

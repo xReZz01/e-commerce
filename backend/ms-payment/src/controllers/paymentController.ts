@@ -2,17 +2,6 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
 import Payments from '../models/Payment.model';
-import Redis from 'ioredis';
-
-// Configuración de Redis
-const redis = new Redis({
-  host: 'redis',
-  port: 6379,
-});
-
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
-});
 
 class PaymentController {
   // Método genérico para manejar reintentos
@@ -33,25 +22,11 @@ class PaymentController {
   // Método para obtener todos los pagos
   static async getPayments(req: Request, res: Response): Promise<Response> {
     try {
-      const cacheKey = 'allPayments';
-
-      // Verificar si los pagos están en Redis
-      const cachedPayments = await redis.get(cacheKey);
-
-      if (cachedPayments) {
-        console.log('Usando pagos desde Redis');
-        return res.status(200).json({ data: JSON.parse(cachedPayments) });
-      }
-
-      // Si no está en caché, buscar en la base de datos
       const payments = await Payments.findAll({
         attributes: { exclude: ['createdAt', 'updatedAt'] },
         order: [['createdAt', 'DESC']],
       });
 
-      // Guardar en Redis con un tiempo de expiración de 2 minutos
-      await redis.setex(cacheKey, 120, JSON.stringify(payments));
-      console.log('Pagos obtenidos desde la base de datos');
       return res.status(200).json({ data: payments });
     } catch (error) {
       console.error('Error en getPayments:', error.message);
@@ -63,17 +38,6 @@ class PaymentController {
   static async getPaymentById(req: Request, res: Response): Promise<Response> {
     const { id } = req.params;
     try {
-      const cacheKey = `payment:${id}`;
-
-      // Verificar si el pago está en Redis
-      const cachedPayment = await redis.get(cacheKey);
-
-      if (cachedPayment) {
-        console.log('Usando pago desde Redis');
-        return res.status(200).json(JSON.parse(cachedPayment));
-      }
-
-      // Si no está en caché, buscar en la base de datos
       const payment = await Payments.findByPk(id, {
         attributes: { exclude: ['createdAt', 'updatedAt'] },
       });
@@ -82,9 +46,6 @@ class PaymentController {
         return res.status(404).json({ message: 'Pago no encontrado' });
       }
 
-      // Guardar en Redis con un tiempo de expiración de 2 minutos
-      await redis.setex(cacheKey, 120, JSON.stringify(payment));
-      console.log('Pago obtenido desde la base de datos');
       return res.status(200).json(payment);
     } catch (error) {
       console.error('Error en getPaymentById:', error.message);
@@ -150,11 +111,6 @@ class PaymentController {
 
       await transaction.commit();
 
-      // Cachear el nuevo pago y limpiar el caché general
-      const cacheKey = `payment:${newPayment.id}`;
-      await redis.setex(cacheKey, 120, JSON.stringify(newPayment));
-      await redis.del('allPayments'); // Invalida el caché general
-
       console.log('Pago procesado exitosamente');
       return res.status(201).json(newPayment);
     } catch (error) {
@@ -171,23 +127,25 @@ class PaymentController {
     const transaction = await db.transaction();
 
     try {
+      // Buscar el pago en la base de datos
       const payment = await PaymentController.withRetries(() => Payments.findByPk(paymentId, { transaction }), 3);
 
       if (!payment) {
-        await transaction.rollback();
+        await transaction.rollback(); // Revertir la transacción si no se encuentra el pago
         return res.status(404).json({ error: 'Pago no encontrado' });
       }
 
+      // Eliminar el registro del pago
       await payment.destroy({ transaction });
+
+      // Confirmar la transacción
       await transaction.commit();
 
-      const cacheKey = `payment:${paymentId}`;
-      await redis.del(cacheKey);
-      await redis.del('allPayments'); // Invalida el caché general
-
-      return res.json({ message: 'Pago revertido exitosamente' });
+      // Ahora solo retornamos un mensaje exitoso.
+      // La compensación del inventario (reversión de stock) ya debe ser gestionada por el orquestador
+      return res.json({ message: 'Pago revertido exitosamente. La compensación de inventario debe ser gestionada por el orquestador.' });
     } catch (error) {
-      await transaction.rollback();
+      await transaction.rollback(); // Asegurarse de hacer rollback en caso de error
       console.error('Error al revertir el pago:', error.message);
       return res.status(500).json({ error: 'Error al revertir el pago' });
     }

@@ -2,33 +2,12 @@ import axios from 'axios';
 import { Request, Response } from 'express';
 import Stock from '../models/Inventory.model';
 import db from '../config/db';
-import Redis from 'ioredis';
-
-// Configuración del cliente Redis
-const redis = new Redis({
-  host: 'redis', 
-  port: 6379, 
-});
-
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
-});
 
 class InventoryController {
   // Obtener todos los registros de inventario
   static async getAllStocks(req: Request, res: Response): Promise<Response> {
     try {
-      const cacheKey = 'allStocks';
-      const cachedStocks = await redis.get(cacheKey);
-
-      if (cachedStocks) {
-        console.log('Usando datos desde el caché de Redis');
-        return res.status(200).json(JSON.parse(cachedStocks));
-      }
-
       const stocks = await Stock.findAll();
-      await redis.set(cacheKey, JSON.stringify(stocks), 'EX', 120); // Cache 2 minutos
-      console.log('Datos obtenidos desde la base de datos y almacenados en Redis');
       return res.status(200).json(stocks);
     } catch (error) {
       console.error('Error al obtener datos del inventario:', error.message);
@@ -40,21 +19,10 @@ class InventoryController {
   static async getStockByProductId(req: Request, res: Response): Promise<Response> {
     const { product_id } = req.params;
     try {
-      const cacheKey = `stock_${product_id}`;
-      const cachedStock = await redis.get(cacheKey);
-
-      if (cachedStock) {
-        console.log('Usando datos desde el caché de Redis');
-        return res.status(200).json(JSON.parse(cachedStock));
-      }
-
       const stock = await Stock.findOne({ where: { product_id } });
       if (!stock) {
         return res.status(404).json({ message: 'Stock no encontrado' });
       }
-
-      await redis.set(cacheKey, JSON.stringify(stock), 'EX', 120); // Cache 2 minutos
-      console.log('Datos obtenidos desde la base de datos y almacenados en Redis');
       return res.status(200).json(stock);
     } catch (error) {
       console.error('Error al obtener stock:', error.message);
@@ -98,10 +66,6 @@ class InventoryController {
           );
         }
         await transaction.commit();
-
-        // Actualizar caché en Redis
-        await redis.set(`stock_${product_id}`, JSON.stringify(updatedStock), 'EX', 120); // Cache 2 minutos
-        await redis.del('allStocks'); // Invalida el caché de todos los stocks
         return res.status(existingStock ? 200 : 201).json(updatedStock);
       } catch (error) {
         await transaction.rollback();
@@ -153,10 +117,6 @@ class InventoryController {
         }
         const updatedStock = await stock.save({ transaction });
         await transaction.commit();
-
-        // Actualizar caché en Redis
-        await redis.set(`stock_${product_id}`, JSON.stringify(updatedStock), 'EX', 120);
-        await redis.del('allStocks'); // Invalida el caché de todos los stocks
         return res.status(200).json(updatedStock);
       } catch (error) {
         await transaction.rollback();
@@ -174,29 +134,60 @@ class InventoryController {
 
   // Revertir compra y actualizar stock
   static async revertPurchase(req: Request, res: Response): Promise<Response> {
-    const { product_id } = req.params;
-    const { quantity } = req.body;
-
+    const { product_id } = req.params; // ID del producto
+    const { quantity } = req.body; // Cantidad a revertir
+    
     if (!product_id || quantity <= 0) {
       return res.status(400).json({ message: 'La cantidad debe ser mayor a 0' });
     }
-
+  
     const transaction = await db.transaction();
     try {
+      // Buscar el stock actual del producto
       const stock = await Stock.findOne({ where: { product_id }, transaction });
       if (!stock) {
         await transaction.rollback();
         return res.status(404).json({ message: 'Stock no encontrado' });
       }
 
+      // Validar que la cantidad a revertir no exceda la reducción realizada previamente
+      const previousReduction = await Stock.findOne({
+        where: {
+          product_id,
+          input_output: 2, // Indica que fue una salida previa
+        },
+        transaction,
+      });
+
+      if (!previousReduction || previousReduction.quantity < quantity) {
+        await transaction.rollback();
+        return res.status(400).json({
+          message: 'No hay suficientes registros de reducción para revertir esta cantidad',
+        });
+      }
+
+      // Ajustar el stock incrementando la cantidad
       stock.quantity += quantity;
+  
+      // Registrar la operación como "reversión" (entrada de stock)
+      const revertLog = await Stock.create(
+        {
+          product_id,
+          quantity,
+          input_output: 1, // Indica que es una entrada (reversión de salida)
+        },
+        { transaction }
+      );
+  
+      // Guardar el stock actualizado
       const updatedStock = await stock.save({ transaction });
       await transaction.commit();
-
-      // Actualizar caché en Redis
-      await redis.set(`stock_${product_id}`, JSON.stringify(updatedStock), 'EX', 120);
-      await redis.del('allStocks'); // Invalida el caché de todos los stocks
-      return res.status(200).json({ message: 'Stock actualizado exitosamente' });
+  
+      return res.status(200).json({
+        message: 'Stock revertido exitosamente',
+        updatedStock,
+        revertLog,
+      });
     } catch (error) {
       await transaction.rollback();
       return res.status(500).json({

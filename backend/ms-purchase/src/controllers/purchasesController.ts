@@ -2,16 +2,6 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import db from '../config/db';
 import Purchase from '../models/Purchase.model';
-import Redis from 'ioredis';
-
-const redis = new Redis({
-  host: 'redis',
-  port: 6379,
-});
-
-redis.on('error', (err) => {
-  console.error('Redis error:', err);
-});
 
 class PurchaseController {
   // Método genérico para manejar reintentos
@@ -32,19 +22,7 @@ class PurchaseController {
   // Método para obtener todas las compras
   static async getPurchases(req: Request, res: Response): Promise<Response> {
     try {
-      // Buscar en Redis
-      const cacheKey = 'allPurchases';
-      const cachedPurchases = await redis.get(cacheKey);
-
-      if (cachedPurchases) {
-        return res.status(200).json(JSON.parse(cachedPurchases));
-      }
-
-      // Si no está en Redis, buscar en la base de datos
       const purchases = await Purchase.findAll();
-
-      // Guardar en Redis con una expiración de 120 segundos
-      await redis.set(cacheKey, JSON.stringify(purchases), 'EX', 120);
 
       return res.status(200).json(purchases);
     } catch (error) {
@@ -81,9 +59,6 @@ class PurchaseController {
 
       await transaction.commit();
 
-      // Invalidar el caché en Redis
-      await redis.del('allPurchases');
-
       return res.json({ message: 'Compra creada', purchase });
     } catch (error) {
       await transaction.rollback();
@@ -94,7 +69,7 @@ class PurchaseController {
 
   // Método para revertir una compra
   static async rollbackPurchase(req: Request, res: Response): Promise<Response> {
-    const { purchase_id } = req.body;
+    const { purchase_id } = req.params; 
 
     const transaction = await db.transaction();
 
@@ -108,11 +83,9 @@ class PurchaseController {
         return res.status(404).json({ error: 'Compra no encontrada' });
       }
 
+      // Eliminar la compra de la base de datos (no afectamos el inventario aquí)
       await purchase.destroy({ transaction });
       await transaction.commit();
-
-      // Invalidar el caché en Redis
-      await redis.del('allPurchases');
 
       return res.json({ message: 'Compra revertida' });
     } catch (error) {

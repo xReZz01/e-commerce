@@ -2,17 +2,6 @@ import { Request, Response } from "express";
 import { Transaction } from "sequelize";
 import Product from "../models/Product.model";
 import db from "../config/db";
-import Redis from "ioredis";
-
-// Configuración de Redis
-const redis = new Redis({
-  host: "redis",
-  port: 6379,
-});
-
-redis.on("error", (err) => {
-  console.error("Redis error:", err);
-});
 
 class ProductController {
   // Método genérico para manejar reintentos
@@ -34,16 +23,10 @@ class ProductController {
   static async getProducts(req: Request, res: Response): Promise<Response> {
     try {
       const result = await ProductController.withRetries(async () => {
-        const cachedProducts = await redis.get("allProducts");
-        if (cachedProducts) {
-          console.log("Productos obtenidos del caché de Redis");
-          return JSON.parse(cachedProducts);
-        }
         const products = await Product.findAll({
           order: [["id", "DESC"]],
           attributes: { exclude: ["createdAt", "updatedAt"] },
         });
-        await redis.set("allProducts", JSON.stringify(products), "EX", 120); // Cache por 2 minutos
         console.log("Productos obtenidos de la base de datos");
         return products;
       });
@@ -59,17 +42,10 @@ class ProductController {
     try {
       const { id } = req.params;
       const result = await ProductController.withRetries(async () => {
-        const cacheKey = `product_${id}`;
-        const cachedProduct = await redis.get(cacheKey);
-        if (cachedProduct) {
-          console.log("Producto obtenido del caché de Redis");
-          return JSON.parse(cachedProduct);
-        }
         const product = await Product.findByPk(id, {
           attributes: { exclude: ["createdAt", "updatedAt"] },
         });
         if (product) {
-          await redis.set(cacheKey, JSON.stringify(product), "EX", 120); // Cache por 2 minutos
           console.log("Producto obtenido de la base de datos");
         }
         return product;
@@ -102,9 +78,6 @@ class ProductController {
           // Crear el nuevo producto
           const product = await Product.create(req.body, { transaction });
 
-          // Limpiar el caché
-          await redis.del("allProducts");
-
           await transaction.commit();
           console.log("Producto creado");
           return product;
@@ -134,10 +107,6 @@ class ProductController {
           }
           await product.update(req.body, { transaction });
           await transaction.commit();
-
-          // Actualizar el caché
-          await redis.set(`product_${id}`, JSON.stringify(product), "EX", 120);
-          await redis.del("allProducts");
           console.log(`Producto ${id} actualizado`);
           return product;
         } catch (error) {
@@ -167,10 +136,6 @@ class ProductController {
           product.activate = !product.dataValues.activate;
           await product.save({ transaction });
           await transaction.commit();
-
-          // Actualizar el caché
-          await redis.set(`product_${id}`, JSON.stringify(product), "EX", 120);
-          await redis.del("allProducts");
           console.log(`Producto ${id} activado/desactivado`);
           return product;
         } catch (error) {

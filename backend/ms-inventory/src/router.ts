@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import InventoryController from './controllers/inventoryController';
 import { validateInputOutput, validateQuantity } from './middleware/handleInputErrors';
+import InventoryController from './controllers/inventoryController';
 
 const router = Router();
 
@@ -11,24 +11,12 @@ router.get('/', InventoryController.getAllStocks);
 router.get('/:product_id', InventoryController.getStockByProductId);
 
 // Agregar nuevo registro de inventario con validación
-router.post('/', 
-    validateInputOutput, 
-    validateQuantity, 
-    InventoryController.addStock
-);
+router.post('/', validateInputOutput, validateQuantity, InventoryController.addStock);
 
 // Modificar la cantidad en el inventario con validación
-router.put('/update', 
-    validateInputOutput, 
-    validateQuantity, 
-    InventoryController.updateStock
-);
+router.put('/update', validateInputOutput, validateQuantity, InventoryController.updateStock);
 
 // Revertir la compra y actualizar el stock
-router.put('/revert/:product_id', 
-    validateInputOutput, 
-    validateQuantity, 
-    InventoryController.revertPurchase
-);
+router.put('/revert/:product_id', validateInputOutput, validateQuantity, InventoryController.revertPurchase);
 
 export default router;
