@@ -7,6 +7,6 @@ module.exports = {
   },
   moduleFileExtensions: ['ts', 'js'],
   moduleNameMapper: {
-    '^src/(.*)$': '<rootDir>/src/$1',
+    '^src/(.*)$': '<rootDir>/src/$1', // Mapea src a la raíz del proyecto
   },
 };

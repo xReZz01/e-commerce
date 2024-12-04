@@ -1,7 +1,7 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Para correr test: k6 run .\load-test.js
+// Para correr test pararse en la carpeta tests/k6 y poner en terminal: k6 run .\load-test.js
 
 export let options = {
   stages: [

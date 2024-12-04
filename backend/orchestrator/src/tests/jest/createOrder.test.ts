@@ -1,17 +1,19 @@
 import { Request, Response } from 'express';
-import Redis from 'ioredis-mock';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
-import { createOrder } from '../controllers/orderController'; // Ajusta la ruta según sea necesario
+import { createOrder } from '../../controllers/orderController';
 
-jest.mock('../config/db', () => ({
+// Para correr test pararse en orquestador y poner en terminal: npx jest
+
+// Mock para la base de datos
+jest.mock('src/config/db', () => ({
   transaction: jest.fn().mockReturnValue({
     commit: jest.fn(),
     rollback: jest.fn(),
   }),
 }));
 
-const redis = new Redis();
+// Mock para Axios
 const mockAxios = new MockAdapter(axios);
 
 describe('createOrder', () => {
@@ -32,40 +34,42 @@ describe('createOrder', () => {
       json: jest.fn(),
     };
 
-    redis.flushall();
-    mockAxios.reset();
+    mockAxios.reset(); // Resetear los mocks de axios
   });
 
-  it('should create an order successfully', async () => {
-    redis.set('stock_1', JSON.stringify({ quantity: 10 }));
-
+  it('debe crear una orden de compra correctamente', async () => {
+    // Mock de las respuestas de las APIs
     mockAxios.onGet('http://localhost:4001/api/products/1').reply(200, { price: 100 });
+    mockAxios.onGet('http://localhost:4002/api/inventory/1').reply(200, { quantity: 10 });
     mockAxios.onPost('http://localhost:4003/api/payments').reply(201, { id: 1 });
     mockAxios.onPost('http://localhost:4004/api/purchases').reply(200, { id: 1 });
 
     await createOrder(req as Request, res as Response);
 
+    // Comprobar que la respuesta fue exitosa
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({ message: 'Orden creada correctamente' });
   });
-
-  it('should return 400 if stock is insufficient', async () => {
-    redis.set('stock_1', JSON.stringify({ quantity: 1 }));
+  
+  it('debe retornar 400 si el stock no es suficiente', async () => {
+    // Simular que el stock es insuficiente
+    mockAxios.onGet('http://localhost:4002/api/inventory/1').reply(200, { quantity: 1 });
 
     await createOrder(req as Request, res as Response);
 
+    // Comprobar que la respuesta es 400 cuando no hay suficiente stock
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ message: 'No hay suficiente stock disponible' });
   });
 
-  it('should return 500 if there is an error obtaining stock', async () => {
+  it('debe retornar 500 si hay un error al obtener stock', async () => {
+    // Simular un error en la API de inventario
     mockAxios.onGet('http://localhost:4002/api/inventory/1').networkError();
 
     await createOrder(req as Request, res as Response);
 
+    // Comprobar que la respuesta es 500 cuando hay un error al obtener stock
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ message: 'Error al obtener stock' });
   });
-
-  // Agrega más tests según sea necesario
 });
