@@ -77,7 +77,7 @@ class PaymentController {
         return res.status(500).json({ message: 'No se pudo obtener el stock del producto' });
       }
 
-      // Obtiene los detalles del producto.
+      // Obtiene los detalles del producto. 
       const productResponse = await PaymentController.withRetries(() =>
         axios.get(`http://localhost:4001/api/products/${product_id}`)
       );
