@@ -5,9 +5,9 @@ import { check, sleep } from 'k6';
 
 export let options = {
   stages: [
-    { duration: '1s', target: 60 }, // Incrementa rápidamente a 60 usuarios en 1 segundo
-    { duration: '1s', target: 60 }, // Mantén a 60 usuarios durante 1 segundo
-    { duration: '1s', target: 0 },  // Reduce a 0 usuarios durante 1 segundo
+    { duration: '1s', target: 60 }, 
+    { duration: '1s', target: 60 }, 
+    { duration: '1s', target: 0 },  
   ],
 };
 
@@ -28,22 +28,22 @@ export default function () {
     },
   };
 
-  // Enviar la solicitud POST para procesar la compra
+  // Enviar la solicitud POST para procesar la orden
   const response = http.post(url, payload, params);
 
   // Verificar los estados esperados
   check(response, {
-    'is status 200 (success)': (r) => r.status === 200,  // Espera 200 si la compra es exitosa
-    'is status 400 (insufficient stock)': (r) => r.status === 400,  // Espera 400 si no hay stock
-    'is status 500 (server error)': (r) => r.status === 500,  // Espera 500 en caso de error del servidor
+    'is status 200 (success)': (r) => r.status === 200, // Éxito
+    'is status 400 (insufficient stock)': (r) => r.status === 400,  // Falta de stock
+    'is status 500 (server error)': (r) => r.status === 500, // Problema interno del server
   });
 
-  // Logs para identificar los errores en detalle
+  // Mostrar detalles de errores específicos según el estado HTTP
   if (response.status === 500) {
-    console.error(`Server error: ${response.body}`);
+    console.error(`Server error: ${response.body}`); // Error interno del servidor
   } else if (response.status === 400) {
-    console.log(`Insufficient stock or bad request: ${response.body}`);
+    console.log(`Insufficient stock or bad request: ${response.body}`); // Stock insuficiente o solicitud inválida
   }
 
-  sleep(0.02); // Pausa breve para simular tiempo de procesamiento
+  sleep(0.02); // Pausa breve entre iteraciones
 }
